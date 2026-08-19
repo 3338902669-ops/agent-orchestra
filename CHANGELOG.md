@@ -5,6 +5,12 @@ All notable changes to this project are documented here. Format follows Keep a C
 ## [Unreleased]
 - Placeholder for upcoming changes.
 
+## [1.1.0] - 2026-08-20
+### Added
+- Configurable activation: global / keyword-triggered / manual modes.
+- Keyword trigger detector script (scripts/detect-trigger.mjs) with exclude-keyword veto.
+- Validation now requires a valid activation block.
+
 ## [1.0.0] - 2026-08-20
 ### Added
 - Initial public release of the Multi-Agent Orchestration Skill.

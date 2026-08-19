@@ -1,6 +1,49 @@
 version: 1
 mode: capability-first
 minimum_agents_for_auto_routing: 3
+
+# ---- Activation: when does this skill engage? ----
+# mode:
+#   global  -> always engaged for every task (simplest, costs a little more context)
+#   keyword -> only engaged when the task text matches keywords below (token-saving default)
+#   manual  -> engaged only when the user explicitly invokes it (most economical)
+activation:
+  mode: keyword
+  match: any            # any = one keyword hit enables; all = every keyword must hit
+  case_sensitive: false
+  keywords:
+    - multi-agent
+    - multi agent
+    - multiple agents
+    - orchestration
+    - coordinate agents
+    - role assignment
+    - single-writer
+    - token efficiency
+    - token cost
+    - important task
+    - critical task
+    - independent verification
+    - 多agent
+    - 多 agent
+    - 多个agent
+    - 多代理
+    - 协作
+    - 分工
+    - 分配任务
+    - 编排
+    - 重要任务
+    - 关键任务
+    - 独立复核
+    - 验收
+    - 节省token
+    - 省token
+    - 成本优化
+  exclude_keywords:     # if any of these appear, do NOT engage (even if keywords hit)
+    - just a question
+    - 闲聊
+    - 随便聊聊
+
 state:
   path: .agent-work/state.json
   lock_path: .agent-work/locks

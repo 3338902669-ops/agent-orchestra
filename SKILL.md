@@ -1,11 +1,33 @@
 ---
 name: multi-agent-orchestration
-description: Use when three or more AI agents are available and a task needs coordinated execution, role assignment, independent verification, risk controls, or lower token/API cost.
+description: Use when three or more AI agents are available and a task needs coordinated execution, role assignment, independent verification, risk controls, or lower token/API cost. Activation is configurable: global, keyword-triggered, or manual.
 ---
 
 # Multi-Agent Orchestration
 
 A capability-first coordination protocol with explicit ownership, evidence, stop conditions, and token-aware routing. It reduces error risk but cannot promise absolute infallibility.
+
+## Activation (when to use this skill)
+
+Configure in config/agents.example.yaml under `activation:`.
+
+| mode | behavior | token cost |
+|---|---|---|
+| global | engages for every task | highest (always loaded) |
+| keyword | engages only when task text matches keywords | default; low |
+| manual | engages only when the user explicitly invokes it | lowest |
+
+Decide engagement before starting any work:
+
+1. Read the activation block from config/agents.example.yaml.
+2. If mode is global -> engage.
+3. If mode is manual -> engage only when the user explicitly asked for multi-agent orchestration.
+4. If mode is keyword -> run:
+
+    node scripts/detect-trigger.mjs --text "<task text>" --config config/agents.example.yaml
+
+   Exit code 0 (ENGAGED) means use this skill; exit code 1 (NOT_ENGAGED) means do not use it.
+   Exclude keywords act as a veto even when a trigger keyword matched.
 
 ## Fast Path
 

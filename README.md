@@ -16,6 +16,20 @@ A portable, capability-first protocol for coordinating three or more AI agents w
 
 It does not provide an absolute guarantee; it makes failures visible, recoverable, and less likely.
 
+## Activation (when to use)
+
+The skill engages in one of three modes, configured under activation: in config/agents.example.yaml:
+
+- global - engages for every task
+- keyword - engages only when the task text matches configured keywords (default; token-saving)
+- manual - engages only when the user explicitly invokes it
+
+For keyword mode, run the trigger detector before starting:
+
+    node scripts/detect-trigger.mjs --text "<task text>" --config config/agents.example.yaml
+
+Exit code 0 means ENGAGED (use the skill); 1 means NOT_ENGAGED. Exclude keywords veto engagement even when a trigger matched.
+
 ## Install
 
 Option A: one-click installer (auto-detects common skill dirs).
