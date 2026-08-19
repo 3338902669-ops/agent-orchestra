@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta property="og:title" content="Multi-Agent Orchestration Skill">
+<meta property="og:description" content="Coordinate 3+ AI agents with capability-based routing, single-writer ownership, independent verification, and token-efficient workflows.">
+<meta property="og:image" content="https://3338902669-ops.github.io/agent-orchestra/og-image.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://3338902669-ops.github.io/agent-orchestra/og-image.png">
 <title>Multi-Agent Orchestration Skill</title>
 <style>
 :root{color-scheme:dark}
@@ -18,49 +24,3 @@ li{margin:5px 0}
 .badge{display:inline-block;background:#1f6feb33;color:#58a6ff;border:1px solid #1f6feb66;border-radius:20px;padding:2px 12px;font-size:0.8rem;margin:2px 4px 2px 0}
 .btn{display:inline-block;background:#238636;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;margin:8px 8px 0 0}
 .btn.gh{background:#1f6feb}
-code{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:2px 6px;font-size:0.9em}
-pre{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px;overflow-x:auto}
-footer{color:#8b949e;font-size:0.85rem;margin-top:40px}
-</style>
-</head>
-<body>
-<div class="wrap">
-<h1>🤖 Multi-Agent Orchestration Skill</h1>
-<div class="tag">Coordinate 3+ AI agents with capability-based routing, single-writer ownership, independent verification, risk-aware execution, and token-efficient workflows.</div>
-<div><span class="badge">ai-agents</span><span class="badge">multi-agent</span><span class="badge">orchestration</span><span class="badge">token-efficiency</span><span class="badge">MIT</span></div>
-
-<div class="card"><h2>✨ What it does</h2>
-<ul>
-<li>Discovers agent capabilities instead of assuming names imply roles</li>
-<li>Assigns coordinator, implementer, verifier, environment, and domain roles</li>
-<li>Enforces one primary writer per file or resource</li>
-<li>Adds a stronger pipeline for user-marked <b>important</b> or <b>critical</b> work</li>
-<li>Stops on failed gates and requires evidence before completion claims</li>
-<li>Reduces token/API cost: compact packets, model tiering, parallel read-only checks, caching</li>
-</ul>
-</div>
-
-<div class="card"><h2>🔒 Safety by design</h2>
-<ul>
-<li>External actions (deploy, publish, send, delete, production change) require explicit user approval</li>
-<li>Never requests secrets — if an agent asks for API keys or tokens, stop and flag it</li>
-<li>Independent verification separates implementation from acceptance</li>
-</ul>
-</div>
-
-<div class="card"><h2>⚡ Quick start</h2>
-<pre>git clone https://github.com/3338902669-ops/agent-orchestra.git
-cd agent-orchestra
-# Windows
-powershell -ExecutionPolicy Bypass -File scripts/install.ps1
-# Linux/macOS
-./scripts/install.sh</pre>
-</div>
-
-<a class="btn gh" href="https://github.com/3338902669-ops/agent-orchestra">View on GitHub</a>
-<a class="btn" href="https://github.com/3338902669-ops/agent-orchestra/releases">Releases</a>
-
-<footer>MIT License · maintained by <a href="https://github.com/3338902669-ops" style="color:#58a6ff">xiaoyuf.Jasyues</a></footer>
-</div>
-</body>
-</html>

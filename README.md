@@ -2,6 +2,9 @@
 
 A portable, capability-first protocol for coordinating three or more AI agents with explicit ownership, independent verification, risk-based execution, and token-aware routing.
 
+<p align="center"><img src="og-image.png" alt="Multi-Agent Orchestration Skill" width="600"></p>
+
+
 ## Features
 
 - discovers capabilities instead of assuming agent names imply roles
