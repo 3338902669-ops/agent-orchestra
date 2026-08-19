@@ -1,0 +1,14 @@
+{
+  "task_id": "task-0001",
+  "risk": "important",
+  "objective": "Replace with a concrete user objective",
+  "scope": ["src/"],
+  "non_goals": ["deploy", "change unrelated behavior"],
+  "baseline": { "revision": "git-sha-or-file-hash" },
+  "roles": { "coordinator": "agent-a", "implementer": "agent-b", "verifier": "agent-c" },
+  "ownership": { "src/target.ts": "agent-b" },
+  "acceptance": ["test command passes", "no unrelated files changed"],
+  "evidence": [],
+  "state": "specified",
+  "external_actions": { "approved": false }
+}

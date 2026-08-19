@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["agent_id", "name", "tools", "permissions", "specialties", "cost_tier", "availability"],
+  "properties": {
+    "agent_id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string" },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "tools": { "type": "array", "items": { "type": "string" } },
+    "permissions": { "type": "object", "required": ["read", "write"], "properties": { "read": { "type": "boolean" }, "write": { "type": "boolean" }, "external_actions": { "type": "boolean" } } },
+    "specialties": { "type": "array", "items": { "type": "string" } },
+    "evidence": { "type": "array", "items": { "type": "string" } },
+    "cost_tier": { "type": "string", "enum": ["low", "medium", "high", "unknown"] },
+    "availability": { "type": "string", "enum": ["available", "busy", "offline", "unknown"] }
+  },
+  "additionalProperties": true
+}

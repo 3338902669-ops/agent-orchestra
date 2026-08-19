@@ -1,0 +1,39 @@
+version: 1
+mode: capability-first
+minimum_agents_for_auto_routing: 3
+state:
+  path: .agent-work/state.json
+  lock_path: .agent-work/locks
+risk:
+  default: routine
+  important_triggers:
+    - user_labels_task_important
+    - modifies_user_facing_behavior
+    - touches_shared_configuration
+    - external_action_requested
+  critical_triggers:
+    - production_or_irreversible_change
+    - security_or_privacy_impact
+    - financial_or_legal_impact
+    - user_labels_task_critical
+  important_pipeline: [specify, implement, verify, accept]
+  critical_pipeline: [specify, implement, verify, domain_review, accept, approval]
+roles:
+  coordinator: { required: true, min_score: 1 }
+  implementer: { required_for: [build, fix, migrate] }
+  verifier: { required_for: [important, critical], independent: true }
+  environment_specialist: { required_for: [environment_failure] }
+  domain_reviewer: { required_for: [critical] }
+ownership:
+  one_primary_writer_per_resource: true
+  reviewers_may_write_shared_resources: false
+approval:
+  external_actions: [deploy, publish, send, delete, production_change]
+  require_explicit_user_confirmation: true
+cost:
+  default_tier: standard
+  tiers: { micro: 2, standard: 4, high_assurance: 6 }
+  cheap_model_for: [discover, extract, format, mechanical_check]
+  strong_model_for: [ambiguity, architecture, adversarial_review, acceptance]
+  max_retries_per_stage: 1
+  require_cost_report: true
