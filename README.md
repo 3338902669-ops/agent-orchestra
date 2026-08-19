@@ -15,9 +15,21 @@ It does not provide an absolute guarantee; it makes failures visible, recoverabl
 
 ## Install
 
-Copy SKILL.md, references, and config into the skill directory supported by your host. Keep scripts for local validation.
+Option A: one-click installer (auto-detects common skill dirs).
 
-Run: node scripts/validate-config.mjs
+Windows PowerShell:
+
+    powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+
+Linux/macOS shell:
+
+    ./scripts/install.sh
+
+Option B: clone and copy SKILL.md, references, and config into the skill directory supported by your host.
+
+Validate your config locally:
+
+    node scripts/validate-config.mjs
 
 ## Host adapter
 
