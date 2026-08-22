@@ -57,3 +57,24 @@ See references/token-efficiency.md.
 Do not claim done, verified, or deployed without criterion-linked evidence. User-facing work should test actual runtime, target environments, core interactions, errors, keyboard/accessibility where relevant, resource loading, and fallback or reduced-motion behavior where relevant. A failed gate returns the task to its responsible stage.
 
 See references/protocol.md, references/roles.md, and config/agents.example.yaml.
+
+
+## 协同调度防翻车指南（八大坑与工程化解法）
+
+> 多个 Agent 并行推进时的典型翻车点，组建团队前逐条对照。
+
+| # | 坑 | 症状 | 工程化解法 |
+|---|---|---|---|
+| 1 | 上下文爆炸 | 共享对话越滚越长，早期约束和验收标准被挤出窗口 | 交接单只存结论与状态（≤200行）；过程性讨论留本地；每批次由总控重发「最小必要上下文」 |
+| 2 | 幻觉传染 | 一个成员输出错误信息，经共享记忆被全员当事实扩散 | 共享记忆分区：写入需总控标「已验证」才可见；未验证内容进隔离区并标注来源与置信度 |
+| 3 | 协作死锁 | A 等 B、B 等 C、C 又等 A，系统永久挂起 | 资源/产出申请按全局固定顺序排队；每个等待带超时（默认15分钟），超时升级总控裁决 |
+| 4 | 状态不一致 | 两人手里的任务状态对不上，重复做或漏做 | 唯一事实源=任务看板状态机；改状态即写盘；口头状态不作数 |
+| 5 | 通信风暴 | 成员互相直聊，消息链路随人数平方膨胀 | 星型拓扑：只允许「成员↔总控」通信，禁止成员互发；协作由总控转交 |
+| 6 | Agent 蔓延 | 按功能细分拆太多角色，边界重叠没人负全责 | 减法原则：新角色先回答「能否并入现有闭环」；每个角色端到端负责一段可交付物 |
+| 7 | 调度靠 LLM 临场发挥 | 同一输入两次派发结果不同，忽快忽慢还漏派 | 派发确定性化：看板扫描+固定规则（标签/负载/顺序）；LLM 只做规划不做机械分发 |
+| 8 | 无验收聚合 | 各自交付没人拼装校验，缺陷集成时才爆 | 总控独立验收门禁：对照验收标准逐条核验+运行证据；不合格整批退回 |
+
+### 硬性红线
+- 禁止两成员同时写同一文件；禁止跳过看板直接开工/交付；
+- 禁止把「我认为完成了」当完成——必须附运行证据；
+- 禁止成员间私相授受任务（一切派发过总控）。
