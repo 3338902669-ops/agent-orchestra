@@ -32,8 +32,8 @@ Configure in `config/agents.example.yaml` under `activation:`.
 
 | exit | label | meaning | what to do |
 |---|---|---|---|
-| **0** | ENGAGED | the sentence names an agent subject **and** an act of coordinating, with no comparison reading | use the skill |
-| **3** | POSSIBLE | ambiguous by construction: comparing models and coordinating models use the same words ("对比这两个模型的协同开发能力" / "让两个 agent 协同开发，最后对比哪个版本") | decide from the sentence yourself, or ask - **do not treat it as a hit or a miss** |
+| **0** | ENGAGED | a curated, self-anchored keyword phrase matched **and** no comparison marker is present | use the skill |
+| **3** | POSSIBLE | coordination phrasing without such a keyword - including every comparison request that also describes coordinating work | decide from the sentence yourself, or ask - **do not treat it as a hit or a miss** |
 | **1** | NOT_ENGAGED | no signal, an exclude keyword, or a plain comparison ("评估这两个模型的准确率") | stay silent |
 
 Exit 3 exists because seven adversarial verification rounds proved that no word list or character

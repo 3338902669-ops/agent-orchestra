@@ -98,7 +98,10 @@ activation:
     # attempt to release this veto turned into the next hole ("协同开发能力", "分别写代码的速度",
     # "谁更适合做协同开发"), because the metric nouns are unbounded and the action words are
     # interchangeable. Downgrading to POSSIBLE is always safe; a wrong ENGAGED is not.
-    comparison_words: [对比, 评测, 测评, 区别, 差异, 优缺点, 选型, 排名, 性价比, 哪个, 哪一个, 哪个更, 比一比, 高下]
+    # Deliberately short tokens, and deliberately biased to OVER-match: 比/评/排/选/谁/孰/哪 are the
+    # grammatical core of comparison in Chinese, and an over-match only costs a downgrade, while a
+    # miss is a wrong engage. A long synonym list was tried and lost: "比较" itself was missing.
+    comparison_words: [比, 评, 排, 选, 谁, 孰, 哪, 优劣, 高下, 对决, 较量, 差距, 打分, vs, pk, compare, versus, which, better, best, rank, score, benchmark]
   exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊

@@ -142,7 +142,9 @@ function decide(cfg, text) {
   // the caller decides on a sentence it could have decided anyway - whereas a wrong ENGAGED is a
   // wrong decision the filter made on its own.
   if (comparisons.length > 0) {
-    if (hits.length || allPatternHits.length || acts.length) {
+    // Gated: only a real coordination signal counts as "coordination wording too", so a bare
+    // comparison with an unrelated pattern match is silent rather than surfaced.
+    if (hits.length || patternHits.length || acts.length) {
       return possible('comparison wording alongside coordination wording (' + comparisons[0] + ')', { comparisons });
     }
     return notEngaged('comparison/evaluation request, not orchestration (' + comparisons.join(', ') + ')', { comparisons });
@@ -166,15 +168,19 @@ function decide(cfg, text) {
       anchors, objects, acts,
     };
   }
-  if (hits.length === 0 && patternHits.length === 0) {
-    return notEngaged('no keyword or pattern matched');
+  // A pattern never decides engagement on its own. Patterns describe how people phrase things, and
+  // any such phrase can also be the subject of a comparison, a headline or an article - nine
+  // verification rounds showed that every "pattern engages unless X" rule just moves the hole into
+  // the next unlisted X. So patterns SURFACE the sentence (exit 3) and only a curated, self-anchored
+  // keyword phrase auto-engages. Downgrading costs the host one decision it is better equipped to
+  // make than a word list; a wrong engage is a decision the filter made alone.
+  if (hits.length > 0) {
+    return { engaged: true, reason: 'keyword matched', hits, patternHits };
   }
-  return {
-    engaged: true,
-    reason: hits.length && patternHits.length ? 'keyword and pattern matched' : (hits.length ? 'keyword matched' : 'pattern matched'),
-    hits,
-    patternHits,
-  };
+  if (patternHits.length > 0) {
+    return possible('coordination phrasing without an unambiguous keyword (' + patternHits.length + ' pattern(s))', { patternHits });
+  }
+  return notEngaged('no keyword or pattern matched');
 }
 
 const args = parseArgs(process.argv);

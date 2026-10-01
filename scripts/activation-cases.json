@@ -1,26 +1,12 @@
 {
-  "schema": "agent-orchestra/activation-cases@3",
+  "schema": "agent-orchestra/activation-cases@4",
   "note": "One list per expected exit code, no overlaps: mustEngage=0, mustNotEngage=1, ambiguous=3, knownLimits=0. Any comparison word sends a sentence to the ambiguous family - it can never be auto-engaged.",
   "mustEngage": [
-    "让 AI 们一起把这个需求做了",
-    "我要用三个 AI 一起做",
-    "几个 agent 同时改代码冲突了",
-    "两个 AI 改同一个文件",
-    "我这几个AI老是互相覆盖对方改动",
     "换个助手继续",
     "多 agent 协作完成这次重构",
     "换助手继续干活",
-    "我们需要独立核验这个实现",
     "we need multi-agent orchestration",
-    "coordinate agents with a single-writer rule",
-    "让 Claude 和 GPT 一起把这个功能做了",
-    "让 Gemini 和 Copilot 一起干活",
-    "这活让两个大模型一块儿干",
-    "双 AI 并行开发这个功能",
-    "两个 bot 并行开发这个功能",
-    "让两个大模型分别负责前后端开发",
-    "把任务交接给下一个 agent",
-    "让另一个 agent 做独立核验"
+    "coordinate agents with a single-writer rule"
   ],
   "mustNotEngage": [
     "帮我写个 k8s 编排文件",
@@ -44,12 +30,8 @@
     "帮我把这三个 AI 模型的对比评测整理成表格",
     "帮我评测一下 Claude 和 GPT 哪个写代码更强",
     "帮我把这三个 AI 大模型的对比评测整理成表格",
-    "GPT 和 Gemini 的区别是什么，帮我写篇对比文章"
-  ],
-  "knownLimits": [
-    "写一篇关于 AI 助手如何协同的文章",
-    "做 AI 一起协作的调研",
-    "删掉关于 AI 助手协同的注释"
+    "GPT 和 Gemini 的区别是什么，帮我写篇对比文章",
+    "我有三个 AI 助手，帮我对比一下它们哪个更适合做代码评审"
   ],
   "exitCodes": {
     "engaged": 0,
@@ -57,7 +39,20 @@
     "notEngaged": 1
   },
   "ambiguous": [
-    "我有三个 AI 助手，帮我对比一下它们哪个更适合做代码评审",
+    "让 AI 们一起把这个需求做了",
+    "我要用三个 AI 一起做",
+    "几个 agent 同时改代码冲突了",
+    "两个 AI 改同一个文件",
+    "我这几个AI老是互相覆盖对方改动",
+    "我们需要独立核验这个实现",
+    "让 Claude 和 GPT 一起把这个功能做了",
+    "让 Gemini 和 Copilot 一起干活",
+    "这活让两个大模型一块儿干",
+    "双 AI 并行开发这个功能",
+    "两个 bot 并行开发这个功能",
+    "让两个大模型分别负责前后端开发",
+    "把任务交接给下一个 agent",
+    "让另一个 agent 做独立核验",
     "让两个 agent 各写一个版本，最后我来对比哪个好",
     "让 Claude 和 GPT 各做一个模块，最后我看下哪个做得好",
     "让两个 agent 分别做，最后我对比一下哪个版本更好",
@@ -68,7 +63,10 @@
     "对比一下这两个 AI 助手的协同写代码效率",
     "对比一下这两个 AI 助手谁更适合做协同处理任务",
     "对比这两个模型分别负责各自模块开发的能力",
-    "让两个 agent 协同开发这个功能，最后对比哪个版本更好"
+    "让两个 agent 协同开发这个功能，最后对比哪个版本更好",
+    "写一篇关于 AI 助手如何协同的文章",
+    "做 AI 一起协作的调研",
+    "删掉关于 AI 助手协同的注释"
   ],
-  "rule": "mustEngage=exit 0; mustNotEngage=exit 1 (including plain comparisons); ambiguous=exit 3 (a comparison word AND coordination wording); knownLimits=exit 0 by design."
+  "rule": "exit 0: a curated self-anchored keyword phrase matched and no comparison marker is present. exit 3: coordination phrasing without such a keyword, or a comparison marker alongside a coordination signal - the caller decides. exit 1: no signal, an exclude keyword, or a comparison with no coordination signal."
 }

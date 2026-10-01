@@ -50,7 +50,8 @@ const MUST_NOT_ENGAGE = ACTIVATION_CASES.mustNotEngage;
 // If this ever changes, the test fails and the register entry is revisited.
 // Loaded from scripts/activation-cases.json: one list, shared with the verifier evidence
 // collector, so the two cannot drift apart the way hand-copied lists do.
-const KNOWN_FALSE_ENGAGE = ACTIVATION_CASES.knownLimits;
+// F-008 (content about collaboration engaging) is resolved by design: patterns no longer
+// auto-engage at all, so a request to write about multi-agent work is surfaced, not engaged.
 const AMBIGUOUS = ACTIVATION_CASES.ambiguous;
 
 const codeOf = (text) => run('scripts/detect-trigger.mjs', ['--config', cli('config/agents.example.yaml'), '--text', text]).code;
@@ -64,17 +65,6 @@ test('activation engages on how people describe the problem', () => {
 test('activation stays silent on ordinary requests that share a word', () => {
   const wrong = MUST_NOT_ENGAGE.map((t) => ({ t, code: codeOf(t) })).filter((x) => x.code !== 1);
   assert.deepEqual(wrong, [], 'these must exit 1 (NOT_ENGAGED): ' + JSON.stringify(wrong));
-});
-
-test('known limitation F-008: meta-discourse about collaboration still engages', () => {
-  const engaged = KNOWN_FALSE_ENGAGE.filter((t) => engages(t).engaged);
-  assert.equal(
-    engaged.length,
-    KNOWN_FALSE_ENGAGE.length,
-    'F-008 changed shape: ' + JSON.stringify(KNOWN_FALSE_ENGAGE.filter((t) => !engages(t).engaged)) +
-      ' no longer engages - if that is an improvement, update KNOWN-FINDINGS.md and this test',
-  );
-  assert.match(readFileSync(cli('KNOWN-FINDINGS.md'), 'utf8'), /F-008/, 'F-008 must be registered');
 });
 
 test('ambiguous requests are surfaced as POSSIBLE, never guessed', () => {
