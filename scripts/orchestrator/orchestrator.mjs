@@ -214,6 +214,12 @@ function runCommand(args) {
       independentVerify: value(args, '--independent-verify', false),
     });
     commit(result.state, rev);
+    if (result.task.startChoicesSource === 'defaults') {
+      process.stderr.write(
+        'orchestrator: start choices assumed (single / skip / skip). To state them, pass --important with ' +
+        '--execution-mode, --security and --independent-verify. Any task with an external action requires all three.\n',
+      );
+    }
     return print(result.task);
   }
   const id = value(args, '--task');

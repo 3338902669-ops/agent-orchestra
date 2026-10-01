@@ -44,7 +44,7 @@ All notable changes to this project are documented here. Format follows Keep a C
   as a second line of defence.
 - Tests: four processes creating tasks at once must all survive; a fresh lock must refuse
   the write; a stale lock must be recovered; and no temp or lock files may be left behind
-  (65 tests total).
+  (65 tests at that release; the suite has grown since).
 
 ## [2.2.0] - 2026-10-01
 

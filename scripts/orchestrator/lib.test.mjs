@@ -46,10 +46,17 @@ import {
 } from './lib.mjs';
 
 function createOne(input) {
-  return createTask(createState(), input);
+  // An external action must state its start choices (the intake gate no longer answers for the
+  // user), so these approval tests supply them and then test what they are actually about.
+  const withChoices = input?.externalAction
+    ? { important: true, executionMode: 'collaborative', security: 'planned', independentVerify: 'planned', ...input }
+    : input;
+  return createTask(createState(), withChoices);
 }
 
-function step(state, id, agent, evidence = '') {
+function step(state, id, agent, evidence = 'ran the stage: exit 0') {
+  // The default carries a graded record because rigor L2 (the default) now requires one to reach
+  // done - the rigor ladder is enforced, not documented.
   const claimed = claimTask(state, id, agent).state;
   return completeStage(claimed, id, agent, { evidence }).state;
 }
@@ -508,6 +515,54 @@ for (const file of RUNTIME_SOURCES) {
     assert.ok(!/\bexec\s*\(/.test(src), 'exec call found in ' + file);
   });
 }
+
+
+// ── the intake gate must not answer for the user ─────────────────────────────────────
+test('a task with an external action must state all three start choices', () => {
+  const state = createState();
+  assert.throws(
+    () => createTask(state, { title: 'deploy', type: 'build', externalAction: 'deploy' }),
+    /requires all three start choices/,
+  );
+  const ok = createTask(state, { title: 'deploy', type: 'build', externalAction: 'deploy', important: true,
+    executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
+  assert.equal(ok.task.startChoicesSource, 'stated');
+});
+
+test('a routine task records that its start choices were assumed, not stated', () => {
+  const state = createState();
+  const created = createTask(state, { title: 'routine', type: 'build' }).task;
+  assert.equal(created.startChoicesSource, 'defaults');
+  assert.deepEqual(created.startChoices, { executionMode: 'single', security: 'skip', independentVerify: 'skip' });
+});
+
+// ── rigor decides what is mandatory (R1) and who may verify (R2) ─────────────────────
+test('L2 cannot reach done without a graded evidence record', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'shared', rigor: 'L2' });
+  assert.throws(() => driveToDone(created, task.id), /requires at least one graded evidence record/);
+  const finished = driveToDone(created, task.id, 'ran the suite: exit 0');
+  assert.equal(finished.tasks[task.id].phase, 'done');
+});
+
+test('an L3 verifier may not also be an author of the evidence', () => {
+  // One agent owns both verify and evidence, while a different agent implements.
+  const roster = {
+    agents: {
+      impl:   { cost: 1, scores: { specify: 3, triage: 1, implement: 3, verify: 1, evidence: 1, environment: 1 } },
+      solo:   { cost: 2, scores: { specify: 2, triage: 1, implement: 1, verify: 3, evidence: 3, environment: 1 } },
+      other:  { cost: 3, scores: { specify: 1, triage: 1, implement: 1, verify: 2, evidence: 2, environment: 1 } },
+    },
+    routes: { specify: 'impl', implement: 'impl', verify: 'solo', evidence: 'solo' },
+  };
+  const state = createState(roster);
+  const { state: created, task } = createTask(state, { title: 'consequential', rigor: 'L3' });
+  const evidence = { grade: 'E1', text: 'gate evidence', command: 'node scripts/gate.mjs', exitCode: 0, revision: 'abc123' };
+  assert.throws(
+    () => driveToDone(created, task.id, evidence),
+    /also produced evidence on this task|not independent/,
+  );
+});
 
 
 // ── concurrency: two writers at once ─────────────────────────────────────────

@@ -415,6 +415,21 @@ export function createTask(state, input) {
       `An external action (${input.externalAction}) cannot be L1: it leaves the machine. Use L3, which requires independent verification and E1 evidence.`,
     );
   }
+  // A task that leaves the machine cannot take the defaults: "not asked" must never mean "no scan,
+  // no independent verification". Everything else may default, but the record says so out loud so a
+  // reader can tell a stated choice from an assumed one.
+  if (input.externalAction) {
+    const missing = [];
+    if (!executionMode) missing.push('--execution-mode');
+    if (!security) missing.push('--security');
+    if (!independentVerify) missing.push('--independent-verify');
+    if (missing.length) {
+      throw new Error(
+        `A task with an external action (${input.externalAction}) requires all three start choices: ${missing.join(', ')}`,
+      );
+    }
+  }
+  const stated = Boolean(executionMode && security && independentVerify);
   const startChoices = {
     executionMode: executionMode ?? DEFAULT_START_CHOICES.executionMode,
     security: security ?? DEFAULT_START_CHOICES.security,
@@ -434,6 +449,8 @@ export function createTask(state, input) {
     important,
     rigor,
     startChoices,
+    // 'stated' = the caller answered all three; 'defaults' = nobody was asked for this task.
+    startChoicesSource: stated ? 'stated' : 'defaults',
     lock: null,
     externalAction: input.externalAction
       ? { kind: input.externalAction, approved: false, approvedBy: null, scope: null }
@@ -495,10 +512,27 @@ export function completeStage(state, id, agent, result = {}) {
   }
   // Rigor L3 means the blast radius is irreversible or published, so a graded, reproducible
   // artifact is required - not a sentence saying it looked fine.
-  if (task.phase === 'evidence' && task.rigor === 'L3' && !task.evidence.some((e) => e.grade === 'E1')) {
+  if (task.phase === 'evidence' && task.rigor !== 'L1' && task.evidence.length === 0) {
+    // R1, enforced rather than documented: the rigor level decides which activities are mandatory,
+    // and at L2 and above "we finished it" has to carry at least one graded record.
     throw new Error(
-      `Task ${id} is L3 (consequential) and cannot reach done without E1 evidence: a command, its exit code and the revision it applies to.`,
+      `Task ${id} is ${task.rigor}: reaching done requires at least one graded evidence record (see references/verification-standard.md).`,
     );
+  }
+  if (task.phase === 'evidence' && task.rigor === 'L3') {
+    if (!task.evidence.some((e) => e.grade === 'E1')) {
+      throw new Error(
+        `Task ${id} is L3 (consequential) and cannot reach done without E1 evidence: a command, its exit code and the revision it applies to.`,
+      );
+    }
+    // R2, at the level where it matters: at L3 the verifier may not have taken part in the work at
+    // all, not merely "not the implementer". Producing evidence on the task is taking part.
+    const verifier = task.verification.by;
+    if (verifier && task.evidence.some((e) => e.agent === verifier)) {
+      throw new Error(
+        `Task ${id} is L3: the verifier (${verifier}) also produced evidence on this task, so the verification is not independent.`,
+      );
+    }
   }
   const stageOwner = (role) => ownerFor(role, { roster, type: task.type, capability: task.capability });
   const transitions = {

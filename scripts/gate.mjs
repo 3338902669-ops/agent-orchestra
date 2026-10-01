@@ -82,7 +82,7 @@ step('activation', 'activation engages on intent and stays silent on lookalikes'
 
 step('engine', 'queue engine unit tests', () =>
   node(['--test', 'scripts/orchestrator/lib.test.mjs']),
-  'exit 0: 65 tests, including concurrent writers and lock recovery');
+  'exit 0: the engine suite passes, including concurrent writers, lock recovery, the rigor ladder and the intake gate');
 
 step('cli-io', 'verification gate holds under real CLI use', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ao-gate-'));
@@ -138,6 +138,38 @@ step('hygiene', 'no private paths, secrets or host-specific names ship', () => {
     : { status: 0, durationMs: 0, out: 'no private paths, secrets or host-specific names', err: '' };
 }, 'exit 0: zero matches across every shipped file');
 
+step('claims', 'numbers stated in the docs match reality', () => {
+  // The config was once the thing that lied; the docs can lie the same way. Only current-state
+  // documents are checked - CHANGELOG entries describe past releases and are historical by nature.
+  const engine = node(['--test', 'scripts/orchestrator/lib.test.mjs']);
+  const acceptance = node(['--test', 'scripts/acceptance.test.mjs']);
+  const countOf = (result) => {
+    const m = /tests (\d+)/.exec(result.out + result.err);
+    return m ? Number(m[1]) : null;
+  };
+  const engineCount = countOf(engine);
+  const acceptanceCount = countOf(acceptance);
+  if (engineCount === null || acceptanceCount === null) {
+    return { status: 1, durationMs: 0, out: '', err: 'could not read the test counts from the suites' };
+  }
+  const docs = ['README.md', 'SKILL.md']
+    .concat(readdirSync(join(ROOT, 'references')).filter((f) => f.endsWith('.md')).map((f) => 'references/' + f));
+  const problems = [];
+  for (const rel of docs) {
+    const file = join(ROOT, rel);
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/(\d+)\s+(?:unit\s+)?tests\b/g)) {
+      const stated = Number(m[1]);
+      if (stated !== engineCount && stated !== engineCount + acceptanceCount && stated !== acceptanceCount) {
+        problems.push(rel + ' states ' + stated + ' tests; the suites hold ' + engineCount + ' engine + ' + acceptanceCount + ' acceptance');
+      }
+    }
+  }
+  return problems.length
+    ? { status: 1, durationMs: 0, out: '', err: problems.join('\n') }
+    : { status: 0, durationMs: 0, out: engineCount + ' engine tests + ' + acceptanceCount + ' acceptance tests; no stale claim found', err: '' };
+}, 'exit 0: every test count stated in current-state docs equals the suites');
 step('findings', 'accepted defects have an owner and a live review date', () => {
   const file = join(ROOT, 'KNOWN-FINDINGS.md');
   if (!existsSync(file)) return { status: 1, durationMs: 0, out: '', err: 'KNOWN-FINDINGS.md is missing; an absent register is a claim that no defects exist' };
