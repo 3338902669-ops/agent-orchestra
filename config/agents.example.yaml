@@ -78,7 +78,7 @@ activation:
   # (real work that happens to include a comparison) still engages.
   comparison_veto:
     comparison_words: [对比, 评测, 测评, 区别, 差异, 优缺点, 选型, 排名, 性价比, 哪个, 哪一个, 哪个更]
-    collaboration_words: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 并行, 接力]
+    collaboration_words: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 并行, 接力]
   exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊
