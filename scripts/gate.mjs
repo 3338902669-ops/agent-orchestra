@@ -37,7 +37,10 @@ const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.git')) continue;
+    // Any dot-entry is runtime state, not source: .git, and an agent runtime that keeps its session
+    // database in the working directory. A verifier's runtime made this distinction concrete - the
+    // hygiene and line-ending checks failed on files that never ship.
+    if (entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) { if (!SKIP_DIRS.has(entry.name)) walk(full, out); }
     else out.push(full);
@@ -192,11 +195,14 @@ step('line-endings', 'shell scripts ship with LF, so they run where they are unp
   const problems = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === 'evidence') continue;
+      // The same exclusion set the packager uses: line endings only matter in files that ship, and a
+      // NUL byte says a file is not text whatever it is named.
+      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'evidence') continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) { walk(full); continue; }
       if (/\.(png|jpg|jpeg|gif|webp|zip|ico)$/i.test(entry.name)) continue;
       const bytes = readFileSync(full);
+      if (bytes.includes(0)) continue;
       const crlf = (bytes.toString('utf8').match(/\r\n/g) || []).length;
       if (crlf > 0) problems.push(relative(ROOT, full) + ': ' + crlf + ' CRLF line endings');
     }

@@ -22,7 +22,10 @@ const ROOT = process.env.AO_BUILD_ROOT
   ? resolve(process.env.AO_BUILD_ROOT)
   : fileURLToPath(new URL('..', import.meta.url));
 const OUT = process.argv[2] || join(ROOT, 'agent-orchestra.zip');
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'evidence']);
+// A verifier ran its own agent runtime in this directory and the build packed the runtime's session
+// database into the release - a buyer would have received someone else's private state. Any dot-entry
+// is now skipped: that covers .git, agent runtimes, editor state and OS litter in one rule.
+const SKIP_DIRS = new Set(['node_modules', 'evidence']);
 // artifact-denylist.json is deliberately NOT shipped: a checker that names the repository it protects
 // would hand the reader the very address it exists to keep out of the artifact.
 const SKIP_FILES = new Set(['artifact-denylist.json']);
@@ -30,7 +33,7 @@ const BINARY = /\.(png|jpg|jpeg|gif|webp|zip|ico)$/i;
 
 function collect(dir, base, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) continue;
+    if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) { collect(full, base, out); continue; }
     out.push({ full, name: 'agent-orchestra/' + relative(base, full).split(/[\\/]/).join('/') });

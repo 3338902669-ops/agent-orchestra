@@ -80,17 +80,26 @@ export function checkArtifact(zipPath) {
   const forbidden = forbiddenPatterns();
   for (const entry of entries) {
     const base = entry.name.split('/').pop() || entry.name;
-    if (BINARY.test(base)) continue;
-    const text = entry.body.toString('utf8');
-    const crlf = (text.match(/\r\n/g) || []).length;
-    if (crlf > 0) problems.push(entry.name + ': ' + crlf + ' CRLF line endings');
+    // The address scan applies to EVERY entry: the entry NAME (it travels in the listing of the
+    // archive), and the bytes of binary-looking files too (a ".png" is not necessarily a PNG). It is
+    // case-insensitive, because a denylist that only catches one spelling catches nothing.
+    const nameHay = entry.name.toLowerCase();
+    const bodyHay = entry.body.toString('latin1').toLowerCase();
     for (const needle of forbidden) {
-      if (text.includes(needle)) {
-        const at = text.indexOf(needle);
-        const line = text.slice(0, at).split('\n').length;
+      const n = needle.toLowerCase();
+      if (nameHay.includes(n)) {
+        problems.push(entry.name + ' names the repository in its entry name (' + needle + ')');
+      } else if (bodyHay.includes(n)) {
+        const at = bodyHay.indexOf(n);
+        const line = bodyHay.slice(0, at).split('\n').length;
         problems.push(entry.name + ':' + line + ' names the repository (' + needle + ')');
       }
     }
+    // CRLF only means something in text, and a NUL byte says it is not text whatever it is named.
+    if (BINARY.test(base) || entry.body.includes(0)) continue;
+    const text = entry.body.toString('utf8');
+    const crlf = (text.match(/\r\n/g) || []).length;
+    if (crlf > 0) problems.push(entry.name + ': ' + crlf + ' CRLF line endings');
   }
   const installer = entries.find((e) => e.name === 'agent-orchestra/scripts/install.sh');
   if (!installer) problems.push('scripts/install.sh is missing from the artifact');

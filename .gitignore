@@ -1,3 +1,6 @@
 
 # Per-run gate evidence (machine-readable; regenerate with: node scripts/gate.mjs)
 evidence/
+# an agent runtime that works in this directory keeps its session state here
+.rivet/
+.rivet
