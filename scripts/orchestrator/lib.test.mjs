@@ -128,7 +128,7 @@ const FLOWS = {
 };
 
 test('STAGES lists the pipeline in order', () => {
-  assert.deepEqual(STAGES, ['specify', 'triage', 'implement', 'verify', 'evidence', 'done']);
+  assert.deepEqual(STAGES, ['specify', 'triage', 'implement', 'verify', 'domain_review', 'evidence', 'done']);
 });
 
 for (const type of TYPES) {
@@ -392,8 +392,18 @@ test('dispatch refuses an unapproved external action, and allows it once approve
   // Reporting the flag while still handing back a runnable argv was the hole: a host adapter that
   // executed the command would have bypassed the approval gate entirely.
   assert.throws(() => nextDispatch(gated.state, gated.task.id), /not approved/);
-  const approved = approveExternalAction(gated.state, gated.task.id, { approvedBy: 'ops', scope: 'staging only' }).state;
+  const approved = approveExternalAction(gated.state, gated.task.id, { approvedBy: 'ops', scope: 'deploy to staging' }).state;
   assert.equal(nextDispatch(approved, gated.task.id).externalActionApproved, true);
+});
+
+test('an approval scope must cover the action it unlocks', () => {
+  // A scope that names somewhere else must not unlock this action.
+  const s = createOne({ title: 'prod-deploy', externalAction: 'deploy', externalTarget: 'production' });
+  const approved = approveExternalAction(s.state, s.task.id, { approvedBy: 'ops', scope: 'staging only' }).state;
+  assert.throws(() => nextDispatch(approved, s.task.id), /does not cover "production"/);
+  // Naming the target unlocks it.
+  const right = approveExternalAction(s.state, s.task.id, { approvedBy: 'ops', scope: 'deploy to production on Friday' }).state;
+  assert.equal(nextDispatch(right, s.task.id).externalActionApproved, true);
 });
 
 test('dispatch throws for non-dispatchable tasks', () => {
@@ -821,10 +831,10 @@ function driveToDone(state, id, evidence) {
     const agent = task.assignedAgent;
     const at = current.tasks[id].phase;
     current = claimTask(current, id, agent).state;
-    // A verification PASS must carry its evidence, so the pass arrives with one too.
+    // A verification PASS and a domain review both carry a record of what they checked.
     const payload = at === 'specify'
       ? { spec: 'the change under test', acceptance: 'the suite exits 0' }
-      : ((at === 'evidence' || at === 'verify') && evidence ? { evidence } : {});
+      : ((at === 'evidence' || at === 'verify' || at === 'domain_review') && evidence ? { evidence } : {});
     current = completeStage(current, id, agent, payload).state;
   }
   throw new Error('task did not reach done: ' + current.tasks[id].phase);
@@ -1072,7 +1082,7 @@ test('a failed verification blocks the gate and returns the task to implement', 
 test('failVerification demands the verify stage and a stated failure', () => {
   const r = createOne({ title: 'not-verifying' });
   // Task is in specify: not a verify stage.
-  assert.throws(() => failVerification(r.state, r.task.id, 'generalist', { findings: 'x' }), /not in the verify stage/);
+  assert.throws(() => failVerification(r.state, r.task.id, 'generalist', { findings: 'x' }), /not in a stage that can fail/);
   const g = atVerify();
   assert.throws(() => failVerification(g.state, g.id, g.verifier, {}), /must state the failing criteria or the findings/);
   // Only the lock holder may fail the stage.

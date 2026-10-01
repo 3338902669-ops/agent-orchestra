@@ -33,7 +33,7 @@ function readYamlSection(file) {
   const lines = raw.split(/\r?\n/);
   const out = {
     mode: 'keyword', match: 'any', case_sensitive: false,
-    keywords: [], patterns: [], exclude_keywords: [], agent_anchors: [], software_objects: [], coordination_acts: [], inquiry_words: [],
+    keywords: [], keywords_requiring_subject: [], patterns: [], exclude_keywords: [], agent_anchors: [], software_objects: [], coordination_acts: [], inquiry_words: [],
     comparison_veto: { comparison_words: [], collaboration_words: [], attribute_nouns: [] },
   };
   let inActivation = false, inList = null;
@@ -59,6 +59,7 @@ function readYamlSection(file) {
     // of the two is how a veto list ends up empty while the config looks correct.
     const target = {
       keywords: 'keywords',
+      keywords_requiring_subject: 'keywords_requiring_subject',
       patterns: 'patterns',
       exclude_keywords: 'exclude_keywords',
       comparison_words: 'comparison_veto.comparison_words',
@@ -182,6 +183,26 @@ function decide(cfg, text) {
   // carry the keyword and no act, so they surface in whatever language they are asked.
   if (hits.length > 0 && subjects.length > 0 && acts.length > 0) {
     return { engaged: true, reason: 'keyword matched with an act of coordinating', hits, acts, patternHits };
+  }
+  // A verb keyword needs a subject; a topic phrase does not.
+  //   "k8s 编排文件"      - 编排 (a verb) used as a modifier of an artifact noun: about a file.
+  //   "编排这几个 agent"   - the same verb with an agent named: a request.
+  //   "benefits of independent verification" - a TOPIC phrase, no verb: still surfaced, because the
+  //                          host is better placed to decide what to do with a question about the topic.
+  // The two classes are listed explicitly rather than guessed, so this cannot become the next
+  // "unlisted X" hole: a keyword that is a verb goes in keywords_requiring_subject.
+  if (hits.length > 0 && subjects.length === 0) {
+    const subjectRequired = (cfg.keywords_requiring_subject ?? []).map(norm);
+    const onlyVerbKeywords = subjectRequired.length > 0
+      && hits.every((h) => subjectRequired.some((k) => norm(h).includes(k)));
+    if (onlyVerbKeywords) {
+      return {
+        engaged: false,
+        possible: false,
+        reason: 'a verb keyword (' + hits.join(', ') + ') with no agent or artifact subject is about the word, not about agents',
+        anchors, objects, acts, hits, patternHits,
+      };
+    }
   }
   if (hits.length > 0) {
     return possible('keyword without an act of coordinating (a question or an evaluation about the topic)', { hits });

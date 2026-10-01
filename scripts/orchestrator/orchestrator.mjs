@@ -172,8 +172,15 @@ function runCommand(args) {
     // documented in the README). Without it the default three-agent roster is used.
     const rosterPath = value(args, '--roster', false);
     const roster = rosterPath ? JSON.parse(readFileSync(rosterPath, 'utf8')) : undefined;
+    // The retry ceiling lives in policy, so the engine reads one number instead of hard-coding 3.
+    const maxAttemptsRaw = value(args, '--max-attempts', false);
     // Fail closed: a non-empty queue is only reset on an explicit --force, and the
     // previous contents are always backed up with a timestamp first.
+    if (maxAttemptsRaw !== undefined && maxAttemptsRaw !== null && maxAttemptsRaw !== false) {
+      const n = Number(maxAttemptsRaw);
+      if (!Number.isInteger(n) || n < 1) throw new Error('--max-attempts must be a positive integer');
+      state.policy = { ...(state.policy ?? {}), maxVerificationAttempts: n };
+    }
     const taskCount = Object.keys(state.tasks ?? {}).length;
     if (taskCount > 0 && !args.includes('--force')) {
       throw new Error(
@@ -207,6 +214,8 @@ function runCommand(args) {
       capability: value(args, '--capability', false),
       workspace: value(args, '--workspace', false),
       externalAction: value(args, '--external-action', false),
+      externalTarget: value(args, '--external-target', false),
+      domain: value(args, '--domain', false),
       important: args.includes('--important'),
       rigor: value(args, '--rigor', false),
       resources: value(args, '--resources', false)?.split(',').map((r) => r.trim()).filter(Boolean),

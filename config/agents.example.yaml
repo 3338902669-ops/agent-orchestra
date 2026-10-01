@@ -51,6 +51,20 @@ activation:
     - 换助手
     - 换个助手
     - 单写入者
+    # The skill's own vocabulary. 编排 is what a Chinese speaker calls this; leaving it only in
+    # patterns meant the clearest possible request ("编排这几个 agent") never engaged. It is safe
+    # here because a keyword still needs an agent subject AND an act - "k8s 编排文件" has neither.
+    - 编排
+    - 编排 agent
+    - 协调 agent
+    - 选一个 agent
+    - 派一个 agent
+    - 指名 agent
+  # Verb keywords: they need an agent subject, or the sentence is about an artifact ("k8s 编排文件").
+  # A topic phrase ("independent verification", "multi-agent") is NOT listed here - knowing the
+  # vocabulary is still surfaced to the caller rather than silently dropped.
+  keywords_requiring_subject:
+    - 编排
   # Regular expressions for INTENT and spoken variants. These are what make the skill engage
   # on how a person describes the problem ("两个 AI 改同一个文件") instead of on the
   # vocabulary the skill itself uses. Deliberately single-quoted so YAML leaves the
@@ -75,7 +89,7 @@ activation:
   # now requires one of these alongside the keyword: a question ABOUT the topic ("what is
   # multi-agent", "multi-agent 是个啥") has a keyword and no act, so it can no longer engage in any
   # language - which is why the hand-written inquiry-word list could be deleted.
-  coordination_acts: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力, 分头, 分担, 交接, 交接班, 接手, 接着, 继续, 核验, 复核, 互相, 覆盖, 冲突, 同一个文件, 同一份文件, orchestrate, coordinate, parallel, hand off, verify, assign, split, divide, collaborate]
+  coordination_acts: [编排, 安排, 分配, 调度, 指派, 派工, 派活, 一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力, 分头, 分担, 交接, 交接班, 接手, 接着, 继续, 核验, 复核, 互相, 覆盖, 冲突, 同一个文件, 同一份文件, orchestrate, coordinate, parallel, hand off, verify, assign, split, divide, collaborate]
   patterns:
     # A plural count of agents counts only when it is about agents DOING something. "三个 AI 模型的
     # 对比评测" is a lookalike; "我要用三个 AI 一起做" is the real thing. The negative lookahead
@@ -110,16 +124,20 @@ activation:
     # attempt to release this veto turned into the next hole ("协同开发能力", "分别写代码的速度",
     # "谁更适合做协同开发"), because the metric nouns are unbounded and the action words are
     # interchangeable. Downgrading to POSSIBLE is always safe; a wrong ENGAGED is not.
-    # Deliberately short tokens, and deliberately biased to OVER-match: 比/评/排/选/谁/孰/哪 are the
-    # grammatical core of comparison in Chinese, and an over-match only costs a downgrade, while a
-    # miss is a wrong engage. A long synonym list was tried and lost: "比较" itself was missing.
+    # Why these are PHRASES and not single characters. An earlier version used 比/评/排/选/谁/哪,
+    # reasoning that "an over-match only costs a downgrade". That reasoning was wrong in the
+    # direction that matters: single characters live INSIDE ordinary words, so the veto fired on
+    # 编排 (orchestrate), 安排 (arrange), 比如 (for example), 选一个 (pick one) and 谁来做 (who does
+    # it) - and a false veto is not a downgrade, it is a SILENT MISS of a real request, which is the
+    # worst outcome this filter can produce. Multi-character markers keep the comparison meaning
+    # (比较/对比/评测/排名/选哪个/谁更) without swallowing the coordination vocabulary.
     # Markers that mean "this sentence is not a request to coordinate": comparison (比/评/排/选/谁/孰/
     # 哪/vs/compare...), evaluation (区别/差异/优缺点/利弊/好处/坏处/还是/推荐), question
     # (什么/如何/为什么/吗/是什么) and content production (文章/报告/调研/教程). Any of them downgrades
     # a keyword hit to POSSIBLE. The list only has to catch markers that appear NEXT TO a coordination
     # act - the language-open cases ("what is multi-agent", "multi-agent 是个啥") are already handled by
     # requiring an act alongside the keyword.
-    comparison_words: [比, 评, 排, 选, 谁, 孰, 哪, 优劣, 高下, 对决, 较量, 差距, 打分, 区别, 差异, 优缺点, 利弊, 好处, 坏处, 还是, 推荐, 值得, 什么, 甚么, 怎么, 怎样, 如何, 为什么, 为啥, 吗, 呢, ？, ?, 是不是, 有没有, 含义, 意思, 概念, 定义, 文章, 报告, 调研, 论文, 教程, 文档, 笔记, 博客, 科普, 综述, vs, pk, compare, versus, which, better, best, rank, score, benchmark, what, how, why, should, explain, benefit, tutorial]
+    comparison_words: [优劣, 高下, 对决, 较量, 差距, 打分, 评分, 区别, 差异, 优缺点, 利弊, 好处, 坏处, 还是, 推荐, 值得, 比较, 对比, 相比, 比比, 比不上, 哪个更, 哪个好, 哪个强, 谁更, 谁好, 谁强, 谁适合, 评测, 评估, 评价, 评论, 点评, 排名, 排行, 排序, 排行榜, 选哪个, 选哪, 该选, 怎么选, 什么, 甚么, 怎么, 怎样, 如何, 为什么, 为啥, 吗, 呢, ？, ?, 是不是, 有没有, 含义, 意思, 概念, 定义, 文章, 报告, 调研, 论文, 教程, 文档, 笔记]
   exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊

@@ -2,7 +2,33 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.4.3] - 2026-10-02
+
+### Fixed
+- **A single character in the comparison veto caused SILENT MISSES.** The veto list held 比, 评, 排,
+  选, 谁 and 哪, on the reasoning that "an over-match only costs a downgrade". That reasoning was
+  wrong in the direction that matters: single characters live inside ordinary words, so the veto
+  fired on 编排 (orchestrate), 安排 (arrange), 比如 (for example), 选一个 (pick one) and 谁来做 (who
+  does it). A false veto is not a downgrade - it is a silent miss of a real request, the worst
+  outcome this filter can produce. Reported twice by an independent reviewer before it was fixed.
+  The markers are now phrases that keep the comparison meaning (比较/对比/评测/排名/选哪个/谁更)
+  without swallowing the coordination vocabulary.
+- **编排 was a keyword AND a veto match**, so the clearest possible Chinese request ("编排这几个
+  agent") never engaged: the veto suppressed it and the keyword could not fire. 编排 was added to
+  the coordination acts and the keyword list, and the veto no longer contains 排.
+- **A verb keyword with no subject now stays silent instead of surfacing.** "k8s 编排文件" is about
+  a file; "编排这几个 agent" is a request. `keywords_requiring_subject` lists the verb keywords that
+  need an agent or artifact subject, while topic phrases ("independent verification") still surface
+  for the caller to judge. Without this, adding 编排 as a keyword would have made every k8s manifest
+  request look like orchestration.
+- The config comment that claimed over-matching only costs a downgrade now states the real trade-off.
+
+### Changed
+- Activation cases: 78 -> 83 (6 engage / 56 surface / 21 silent). The five sentences this review
+  reported are now permanent cases, so the regression cannot come back quietly.
+
 ## [2.4.2] - 2026-10-02
+
 
 A second independent review measured the gap between what the doctrine says and what the engine
 enforces, and found five rules that were documentation rather than invariants. All five were

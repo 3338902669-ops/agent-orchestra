@@ -5,7 +5,9 @@
     "换个助手继续",
     "多 agent 协作完成这次重构",
     "换助手继续干活",
-    "coordinate agents with a single-writer rule"
+    "coordinate agents with a single-writer rule",
+    "编排这几个 agent",
+    "agent 编排"
   ],
   "mustNotEngage": [
     "帮我写个 k8s 编排文件",
@@ -88,7 +90,10 @@
     "multi-agent 是个啥",
     "写篇 multi-agent 攻略",
     "multi-agent 靠不靠谱",
-    "帮我判断 multi-agent 合不合适"
+    "帮我判断 multi-agent 合不合适",
+    "安排两个 agent 一个写一个查",
+    "比如让三个 agent 分工写",
+    "选一个 agent 来负责"
   ],
   "rule": "exit 0: a curated self-anchored keyword phrase matched and no comparison marker is present. exit 3: coordination phrasing without such a keyword, or a comparison marker alongside a coordination signal - the caller decides. exit 1: no signal, an exclude keyword, or a comparison with no coordination signal."
 }

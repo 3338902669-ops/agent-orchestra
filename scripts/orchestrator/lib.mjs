@@ -20,7 +20,7 @@ export const CAPABILITIES = ['full', 'web', 'complex', 'verify', 'environment'];
 export const TYPES = ['build', 'web', 'complex', 'verify', 'environment'];
 
 /** Roles a roster can score an agent for. */
-export const ROLES = ['specify', 'triage', 'implement', 'verify', 'evidence', 'environment'];
+export const ROLES = ['specify', 'triage', 'implement', 'verify', 'evidence', 'environment', 'domain'];
 
 /**
  * The default roster. A roster is DATA - "who can do what, how well, at what cost":
@@ -37,9 +37,9 @@ export const ROLES = ['specify', 'triage', 'implement', 'verify', 'evidence', 'e
  */
 export const DEFAULT_ROSTER = Object.freeze({
   agents: {
-    generalist: { cost: 4, available: true, specialties: [], scores: { specify: 3, implement: 2, verify: 2, evidence: 3, environment: 1 } },
-    frontend: { cost: 3, available: true, specialties: ['web'], scores: { specify: 1, implement: 3, verify: 1, evidence: 1, environment: 1 } },
-    specialist: { cost: 6, available: true, specialties: ['complex', 'verify', 'environment'], scores: { specify: 2, implement: 3, verify: 3, evidence: 2, environment: 3 } },
+    generalist: { cost: 4, available: true, specialties: [], scores: { specify: 3, implement: 2, verify: 2, evidence: 3, environment: 1, domain: 1 } },
+    frontend: { cost: 3, available: true, specialties: ['web'], scores: { specify: 1, implement: 3, verify: 1, evidence: 1, environment: 1, domain: 1 } },
+    specialist: { cost: 6, available: true, specialties: ['complex', 'verify', 'environment'], scores: { specify: 2, implement: 3, verify: 3, evidence: 2, environment: 3, domain: 2 } },
   },
   routes: {
     specify: 'generalist',
@@ -77,7 +77,10 @@ export function validateRoster(roster) {
 }
 
 /** Pipeline stages in order. `triage` is only used by `environment` tasks. */
-export const STAGES = ['specify', 'triage', 'implement', 'verify', 'evidence', 'done'];
+export const STAGES = ['specify', 'triage', 'implement', 'verify', 'domain_review', 'evidence', 'done'];
+
+/** Stage that only consequential work runs. See references/verification-standard.md (rigor). */
+export const REQUIRES_DOMAIN_REVIEW = (rigor) => rigor === 'L3';
 
 /** Allowed values for the three start choices. */
 export const EXECUTION_MODES = ['single', 'collaborative'];
@@ -305,6 +308,21 @@ export function selectVerifier(implementer, roster = DEFAULT_ROSTER, options = {
   return pick.id;
 }
 
+/**
+ * Pick the domain reviewer for consequential work.
+ *
+ * The reviewer must be a THIRD party: not the implementer, not the verifier. A roster that scores
+ * nobody for the `domain` role falls back to the best verify-role agent that took no part, and the
+ * record says it fell back, so the gap is visible rather than silently filled.
+ */
+export function selectDomainReviewer(roster = DEFAULT_ROSTER, { exclude = [] } = {}) {
+  const scored = selectAgent('domain', { roster, exclude });
+  if (scored && scored.score > 0) return { id: scored.id, score: scored.score, fallback: false };
+  const alt = selectAgent('verify', { roster, exclude });
+  if (!alt) return null;
+  return { id: alt.id, score: alt.score, fallback: true };
+}
+
 /** Convenience wrapper over selectVerifier for the default roster. */
 export function verifierFor(implementer) {
   return selectVerifier(implementer);
@@ -374,6 +392,9 @@ export function createState(roster = DEFAULT_ROSTER) {
     events: [],
     // Who can do what. Older state files without a roster fall back to the default.
     roster: checked,
+    // Policy the engine reads instead of hard-coding. `init --max-attempts N` raises or lowers the
+    // retry ceiling; the config's verification_gate.blocked_after_rounds documents the same number.
+    policy: { maxVerificationAttempts: 3 },
   };
 }
 
@@ -451,6 +472,10 @@ export function createTask(state, input) {
   // Resources: the unit of single-writer ownership. A task lock keeps one owner per TASK; this is
   // what keeps one writer per RESOURCE, which is what the doctrine actually promises. Entries are
   // free-form (paths, tables, queues) compared case-insensitively.
+  // Critical work (L3) runs a domain review before its evidence is accepted. The domain label is
+  // free-form (security, legal, compliance, architecture, ux...) and is recorded with the review.
+  const requiresDomainReview = input.domainReview === true || REQUIRES_DOMAIN_REVIEW(rigor);
+  const domain = input.domain ? String(input.domain).trim() : null;
   const resources = Array.isArray(input.resources)
     ? [...new Set(input.resources.map((r) => String(r).trim()).filter(Boolean))]
     : [];
@@ -472,13 +497,26 @@ export function createTask(state, input) {
     status: 'queued',
     important,
     rigor,
+    requiresDomainReview,
+    domain,
+    domainReview: requiresDomainReview
+      ? { status: 'pending', by: null, at: null, domain, fallback: null, witness: null }
+      : null,
     resources,
     startChoices,
     // 'stated' = the caller answered all three; 'defaults' = nobody was asked for this task.
     startChoicesSource: stated ? 'stated' : 'defaults',
     lock: null,
     externalAction: input.externalAction
-      ? { kind: input.externalAction, approved: false, approvedBy: null, scope: null }
+      ? {
+          kind: input.externalAction,
+          // What the action acts on. The approval scope has to cover this (or the kind), which is
+          // what turns the scope from a note into a constraint.
+          target: input.externalTarget ? String(input.externalTarget).trim() : null,
+          approved: false,
+          approvedBy: null,
+          scope: null,
+        }
       : null,
     // The task packet from references/task-queue.md, as fields rather than prose. It may be filled
     // at create time or while completing the specify stage, but it must exist before specify ends.
@@ -546,6 +584,7 @@ export function completeStage(state, id, agent, result = {}) {
   if (result.evidence) {
     const record = normalizeEvidence(agent, result.evidence);
     if (task.phase === 'verify') task.verification.witness = record;
+    else if (task.phase === 'domain_review') { /* stored with the review decision below */ }
     else task.evidence.push(record);
   }
   const roster = next.roster ?? DEFAULT_ROSTER;
@@ -597,13 +636,28 @@ export function completeStage(state, id, agent, result = {}) {
     }
   }
   const stageOwner = (role) => ownerFor(role, { roster, type: task.type, capability: task.capability });
+  // Who reviews the domain: a third party, never the implementer and never the verifier.
+  const domainPick = task.requiresDomainReview
+    // At this point the verify completion has not been written yet, so the verifier IS the agent
+    // completing the stage - falling back to `agent` is what keeps the reviewer a third party.
+    ? selectDomainReviewer(roster, {
+        exclude: [implementAgent, task.verification.by ?? agent].filter(Boolean),
+      })
+    : null;
   const transitions = {
     specify: task.type === 'environment'
       ? { phase: 'triage', agent: stageOwner('triage') }
       : { phase: 'implement', agent: implementAgent },
     triage: { phase: 'implement', agent: implementAgent },
     implement: { phase: 'verify', agent: verifier },
-    verify: { phase: 'evidence', agent: stageOwner('evidence') },
+    verify: task.requiresDomainReview && task.domainReview?.status !== 'passed'
+      ? {
+          phase: 'domain_review',
+          // fail closed: if nobody outside the work is available, say so instead of skipping review
+          agent: domainPick ? domainPick.id : null,
+        }
+      : { phase: 'evidence', agent: stageOwner('evidence') },
+    domain_review: { phase: 'evidence', agent: stageOwner('evidence') },
     evidence: { phase: 'done', agent: null },
   };
   // R3: each stage declares its work products, and the specify stage's product is the packet. Leaving
@@ -631,7 +685,33 @@ export function completeStage(state, id, agent, result = {}) {
   const nextStep = transitions[task.phase];
   if (!nextStep) throw new Error(`Task ${id} cannot complete unknown phase ${task.phase}`);
   if (nextStep.phase !== 'done' && !nextStep.agent) {
+    if (nextStep.phase === 'domain_review') {
+      throw new Error(
+        `Task ${id} is ${task.rigor} and needs a domain review, but every eligible agent either ` +
+          'implemented or verified it. Add an agent to the roster that took no part in the work.',
+      );
+    }
     throw new Error(`No agent in the roster can own the ${nextStep.phase} stage`);
+  }
+  // A domain review is a decision about the work, so it carries its own record, and the reviewer
+  // must be a third party. Like the verifier's pass, the record is a witness, not task evidence.
+  if (task.phase === 'domain_review') {
+    if (!result.evidence) {
+      throw new Error(`Task ${id}: a domain review cannot PASS without its review record (--evidence)`);
+    }
+    if (agent === implementAgent || agent === task.verification.by) {
+      throw new Error(
+        `Task ${id}: the domain reviewer must be neither the implementer nor the verifier (got ${agent})`,
+      );
+    }
+    task.domainReview = {
+      status: 'passed',
+      by: agent,
+      at: now(),
+      domain: task.domain,
+      fallback: domainPick ? domainPick.fallback : false,
+      witness: normalizeEvidence(agent, result.evidence),
+    };
   }
   const previousPhase = task.phase;
   // Completing the verify stage IS the pass. Record who passed it, and when.
@@ -669,8 +749,8 @@ export function completeStage(state, id, agent, result = {}) {
 export function failVerification(state, id, agent, failure = {}) {
   const next = copy(state);
   const task = requireTask(next, id);
-  if (task.phase !== 'verify') {
-    throw new Error(`Task ${id} is not in the verify stage (current: ${task.phase})`);
+  if (task.phase !== 'verify' && task.phase !== 'domain_review') {
+    throw new Error(`Task ${id} is not in a stage that can fail (current: ${task.phase})`);
   }
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot fail a stage`);
   requireOwner(task, agent);
@@ -679,6 +759,7 @@ export function failVerification(state, id, agent, failure = {}) {
   if (!criteria && !findings) {
     throw new Error('A verification failure must state the failing criteria or the findings');
   }
+  const rejectedStage = task.phase;
   const previous = task.verification ?? emptyVerification();
   task.verification = {
     ...previous,
@@ -696,7 +777,9 @@ export function failVerification(state, id, agent, failure = {}) {
   task.lock = null;
   // E: the doctrine says a task stuck after three rounds is blocked rather than retried forever.
   // That was only in the config; this makes it a state transition a coordinator has to clear.
-  const blockedAfter = 3;
+  // Policy, not a constant: the config documents blocked_after_rounds, and a hard-coded 3 here is
+  // exactly how "config says 5, engine does 3" happens. init --max-attempts sets it.
+  const blockedAfter = next.policy?.maxVerificationAttempts ?? 3;
   if (task.verification.attempts >= blockedAfter) {
     task.status = 'blocked';
     event(next, id, 'blocked_after_rounds', { attempts: task.verification.attempts, criteria, findings });
@@ -791,6 +874,9 @@ export function nextDispatch(state, id) {
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot be dispatched`);
   if (task.lock) throw new Error(`Task ${id} is already held by ${task.lock.owner}`);
   if (!task.assignedAgent) throw new Error(`Task ${id} has no assigned agent; cannot dispatch`);
+  if (task.phase === 'done' && task.requiresDomainReview && task.domainReview?.status !== 'passed') {
+    throw new Error(`Task ${id} is ${task.rigor} and cannot be done without a passed domain review`);
+  }
   if (task.phase === 'evidence' && task.verification?.blocked && !task.verification?.override) {
     throw new Error(
       `Task ${id} is gated: verification failed and no override is recorded, so it cannot be dispatched to evidence`,
@@ -804,6 +890,18 @@ export function nextDispatch(state, id) {
       `Task ${id} carries an external action (${task.externalAction.kind}) that is not approved. ` +
         `Record one with: approve --task ${id} --by <who> --scope <what>`,
     );
+  }
+  // The scope is a constraint, not a note: an approval for "staging" must not unlock a production
+  // deployment. The scope has to name the action's target when one is declared, otherwise its kind.
+  if (task.externalAction?.approved) {
+    const scope = String(task.externalAction.scope ?? '').trim().toLowerCase();
+    const required = String(task.externalAction.target ?? task.externalAction.kind ?? '').trim().toLowerCase();
+    if (required && scope && !scope.includes(required)) {
+      throw new Error(
+        `Task ${id}: the approval scope ("${task.externalAction.scope}") does not cover ` +
+          `"${task.externalAction.target ?? task.externalAction.kind}". Approve the action you are about to run.`,
+      );
+    }
   }
   const rendered = agentCommand(task);
   if (!rendered) throw new Error(`Task ${id} has no dispatch command for agent ${task.assignedAgent}`);
