@@ -84,14 +84,22 @@ export function checkArtifact(zipPath) {
     // archive), and the bytes of binary-looking files too (a ".png" is not necessarily a PNG). It is
     // case-insensitive, because a denylist that only catches one spelling catches nothing.
     const nameHay = entry.name.toLowerCase();
-    const bodyHay = entry.body.toString('latin1').toLowerCase();
+    // A verifier found the bypass this closes: the address written as UTF-16LE ('7\0 3\0 3\0 ...')
+    // is fully present yet invisible to a byte-for-byte scan, because the ASCII neighbours it needs
+    // are separated by NULs. Stripping NULs before matching sees through that, in either byte order,
+    // and costs one string copy.
+    const latin = entry.body.toString('latin1');
+    const haystacks = [latin.toLowerCase(), latin.replace(/\0/g, '').toLowerCase()];
     for (const needle of forbidden) {
       const n = needle.toLowerCase();
       if (nameHay.includes(n)) {
         problems.push(entry.name + ' names the repository in its entry name (' + needle + ')');
-      } else if (bodyHay.includes(n)) {
-        const at = bodyHay.indexOf(n);
-        const line = bodyHay.slice(0, at).split('\n').length;
+        continue;
+      }
+      const hit = haystacks.find((h) => h.includes(n));
+      if (hit) {
+        const at = hit.indexOf(n);
+        const line = hit.slice(0, at).split('\n').length;
         problems.push(entry.name + ':' + line + ' names the repository (' + needle + ')');
       }
     }
@@ -138,6 +146,21 @@ async function selfTest() {
   const dirty = checkArtifact(dirtyZip);
   const named = dirty.problems.some((x) => x.includes('names the repository'));
   results.push({ name: 'an artifact naming the repository is refused', rejected: named, problems: dirty.problems.slice(0, 3) });
+
+  // A verifier bypassed the first version by writing the address as UTF-16LE. The pin belongs here, so
+  // the check cannot regress to byte-only matching without the self-test failing.
+  const encTree = join(tmp, 'tree-encoded');
+  cpSync(ROOT, encTree, { recursive: true, filter: (src) => !/[\\/](\.git|node_modules|evidence)$/.test(src) && !/[\\/]\.[^\\/]*$/.test(src) });
+  const encZip = join(tmp, 'encoded.zip');
+  wr(join(encTree, 'notes.txt'), Buffer.from('see https://github.com/' + ['33389', '02669-ops'].join('') + '/agent-orchestra', 'utf16le'));
+  execFileSync(process.execPath, [join(ROOT, 'scripts/build-release.mjs'), encZip], {
+    cwd: ROOT,
+    stdio: 'pipe',
+    env: { ...process.env, AO_BUILD_ROOT: encTree },
+  });
+  const enc = checkArtifact(encZip);
+  const caught = enc.problems.some((x) => x.includes('names the repository'));
+  results.push({ name: 'an address hidden as UTF-16 is refused', rejected: caught, problems: enc.problems.slice(0, 3) });
   rm(tmp, { recursive: true, force: true });
   return results;
 }

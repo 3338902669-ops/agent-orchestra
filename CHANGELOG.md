@@ -2,7 +2,26 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
-## [2.5.3] - 2026-10-02
+## [2.5.4] - 2026-10-02
+
+### Fixed
+- An independent verifier bypassed the artifact check by writing the address as **UTF-16LE**: the bytes
+  `73 00 65 00 ...` hold the full address, yet a byte-for-byte scan never sees the ASCII neighbours it
+  looks for. The scan now also matches against the entry with NUL bytes stripped, which sees through
+  that in either byte order, and the self-test carries the encoded case so the check cannot regress to
+  byte-only matching.
+
+### Verified
+- The same verifier's own adversarial packages were re-run against the fixed check: entry-name leak,
+  case variant, text in a `.png`, mode 644, CRLF, a missing file and the UTF-16 case are all refused,
+  and a clean artifact still passes.
+
+### Known boundary
+- Encoding is an arms race this check does not win outright. UTF-16 is now caught; base64,
+  percent-encoding and HTML entities are not, and are listed as a limit rather than implied to be
+  covered. A denylist check is a guard-rail, not a proof.
+
+Gate: 15 steps. 89 engine tests, 8 acceptance, 8 handoff.
 
 ### Added
 - **scripts/check-artifact.mjs**: the gate now verifies the PUBLISHED zip rather than the tree it was
