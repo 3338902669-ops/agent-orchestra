@@ -32,6 +32,12 @@ a recognised status value (`进行中` / `等待接续` / `已完成` or the Eng
 statement that the record outranks the queue - a negated one ("the record does **not** outrank the queue")
 is refused, because it says the opposite while containing the same words.
 
+**What the queue does not do.** The engine reads the queue and checks the record; it does not
+reconcile the two. "The record outranks the queue" is a rule the agents follow with a timestamped
+entry when they disagree, not a state-machine invariant - a task edited directly in the queue file
+will not be contradicted by the record. Treat the record as the reviewable history and the queue as
+the working state, and reconcile by hand when they diverge.
+
 Rules for the record itself:
 
 - **Keep the live entry short.** Conclusions and state only - owner, status, step, next step, evidence pointers - under roughly 200 lines. Process chat and reasoning stay in the working agent's own session.

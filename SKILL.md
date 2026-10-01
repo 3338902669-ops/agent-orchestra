@@ -193,7 +193,8 @@ Stage machine: `specify -> implement -> verify -> evidence -> done`, plus `block
 
 ```bash
 node scripts/orchestrator/orchestrator.mjs init --roster my-team.json         # 3, 5 or 12 agents
-node scripts/orchestrator/orchestrator.mjs create --title "Fix checkout" --type build --workspace "<workspace>"
+node scripts/orchestrator/orchestrator.mjs create --title "Fix checkout" --type build --workspace "<workspace>" \
+  --resources "src/checkout.ts,src/cart.ts" --rigor L2                             # one writer per RESOURCE
 node scripts/orchestrator/orchestrator.mjs claim  --task task-0001 --agent implementer-a
 node scripts/orchestrator/orchestrator.mjs dispatch --task task-0001          # dry-run command only
 node scripts/orchestrator/orchestrator.mjs fail   --task task-0001 --agent verifier-b --criteria "test X fails"
@@ -203,6 +204,12 @@ node scripts/orchestrator/orchestrator.mjs approve --task task-0002 --by user --
 
 - `dispatch` prints the command to run and an `argv` array; it never launches an agent. Prefer `argv` over pasting the command line into a shell.
 - A non-dispatchable task (blocked, gated, no assignee, no command) fails with a non-zero exit code. Exit 0 must never disguise an undispatchable task.
+- **An external action cannot be dispatched until it is approved**, and the approval names an approver and a scope.
+- **A resource is held by one live task at a time.** Declare `--resources`; a claim that overlaps a held
+  resource is refused and names the holder. The lock is per stage, so completing a stage frees it.
+- **A verification PASS must carry its witness.** The record is stored on the verification itself, not as
+  evidence authored by the verifier, so L3's "the verifier produced none of the evidence" still holds.
+- **Three failed verifications block the task** for a coordinator to recover, instead of retrying forever.
 - `approve` is the only path for external actions, per task and per scope; `fail` closes the verification gate; `override` is the only way past it.
 
 See `references/task-queue.md` and `scripts/orchestrator/README.md`.

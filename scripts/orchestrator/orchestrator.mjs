@@ -209,6 +209,7 @@ function runCommand(args) {
       externalAction: value(args, '--external-action', false),
       important: args.includes('--important'),
       rigor: value(args, '--rigor', false),
+      resources: value(args, '--resources', false)?.split(',').map((r) => r.trim()).filter(Boolean),
       spec: value(args, '--spec', false),
       acceptance: value(args, '--acceptance', false),
       nonGoals: value(args, '--non-goals', false),

@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.4.2] - 2026-10-02
+
+A second independent review measured the gap between what the doctrine says and what the engine
+enforces, and found five rules that were documentation rather than invariants. All five were
+reproduced before being fixed, and each now has a test.
+
+### Fixed
+- **An unapproved external action could be dispatched.** `nextDispatch` reported
+  `externalActionApproved: false` and still returned a runnable argv, so a host adapter that
+  executed the command would have bypassed approval. Dispatch now refuses it, and the approval has
+  to name an approver and a scope before anything is handed back.
+- **Single-writer was per task, not per resource.** Two tasks could hold the same file. A task now
+  declares its resources (`create --resources src/a.ts,src/b.ts`) and a claim is refused while
+  another live task holds an overlapping one, naming the holder.
+- **A verification PASS needed no evidence.** The verifier could complete the verify stage with
+  nothing and the task moved on. A PASS must now arrive with its witness. The witness is stored on
+  the verification record, not in the task's evidence list: storing it as evidence made the verifier
+  an evidence author, which contradicted the L3 rule that the verifier produced none of it.
+- **Three failed verifications retried forever.** `blocked_after_rounds: 3` existed only in the
+  config. The third failure now sets the task to `blocked`, which refuses further claims until a
+  coordinator recovers it.
+- **An important task could self-verify at L1.** "Important work requires an independent verifier"
+  and the L1 shortcut contradicted each other; importance now wins, and the record says which
+  happened.
+
+### Known limits, newly registered
+- F-012: E1 is a structural check, not provenance. The engine verifies that a command, an exit code
+  and a revision are present, not that the command ran. Generating E1 from a runner rather than
+  accepting it from an agent is the fix, and it is not implemented.
+- F-013: `config/agents.example.yaml` documents the roster; the runtime roster comes from
+  `init --roster <file.json>`. Editing the YAML does not change routing.
+
 ## [2.4.1] - 2026-10-02
 
 ### Fixed

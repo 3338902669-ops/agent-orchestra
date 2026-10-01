@@ -448,6 +448,12 @@ export function createTask(state, input) {
     }
   }
   const stated = Boolean(executionMode && security && independentVerify);
+  // Resources: the unit of single-writer ownership. A task lock keeps one owner per TASK; this is
+  // what keeps one writer per RESOURCE, which is what the doctrine actually promises. Entries are
+  // free-form (paths, tables, queues) compared case-insensitively.
+  const resources = Array.isArray(input.resources)
+    ? [...new Set(input.resources.map((r) => String(r).trim()).filter(Boolean))]
+    : [];
   const startChoices = {
     executionMode: executionMode ?? DEFAULT_START_CHOICES.executionMode,
     security: security ?? DEFAULT_START_CHOICES.security,
@@ -466,6 +472,7 @@ export function createTask(state, input) {
     status: 'queued',
     important,
     rigor,
+    resources,
     startChoices,
     // 'stated' = the caller answered all three; 'defaults' = nobody was asked for this task.
     startChoicesSource: stated ? 'stated' : 'defaults',
@@ -499,6 +506,23 @@ export function claimTask(state, id, agent) {
   if (task.assignedAgent !== agent) {
     throw new Error(`Task ${id} is assigned to ${task.assignedAgent}, not ${agent}`);
   }
+  // A resource held by another live task cannot be claimed, no matter who is asking.
+  if (task.resources?.length) {
+    const conflicts = Object.values(next.tasks).filter((other) => {
+      if (other.id === task.id) return false;
+      if (!other.lock) return false;
+      if (other.status === 'done' || other.status === 'blocked') return false;
+      return (other.resources ?? []).some((r) =>
+        task.resources.some((mine) => mine.toLowerCase() === String(r).toLowerCase()));
+    });
+    if (conflicts.length) {
+      const held = conflicts
+        .flatMap((other) => (other.resources ?? []).filter((r) =>
+          task.resources.some((mine) => mine.toLowerCase() === String(r).toLowerCase()))
+          .map((r) => r + ' (task ' + other.id + ', held by ' + other.lock.owner + ')'));
+      throw new Error(`Task ${id} cannot claim: resource already held by ${held.join('; ')}`);
+    }
+  }
   task.lock = { owner: agent, claimedAt: now() };
   task.status = 'in_progress';
   task.updatedAt = now();
@@ -516,7 +540,14 @@ export function completeStage(state, id, agent, result = {}) {
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot complete a stage`);
   requireOwner(task, agent);
   task.verification ??= emptyVerification();
-  if (result.evidence) task.evidence.push(normalizeEvidence(agent, result.evidence));
+  // A verifier's pass record is a WITNESS, not task evidence. Mixing the two made the verifier an
+  // evidence author, which then broke the L3 rule that the verifier must have produced none of it -
+  // the two requirements would have cancelled each other out.
+  if (result.evidence) {
+    const record = normalizeEvidence(agent, result.evidence);
+    if (task.phase === 'verify') task.verification.witness = record;
+    else task.evidence.push(record);
+  }
   const roster = next.roster ?? DEFAULT_ROSTER;
   const implementAgent = implementerForType(task.type, roster);
   // The verifier is chosen by capability score, never the implementer (see selectVerifier).
@@ -524,7 +555,9 @@ export function completeStage(state, id, agent, result = {}) {
   // Rigor decides how much independence is required, as the standard says: L1 is local and
   // reversible, so the implementer may verify it (recorded as selfVerified); L2 and L3 still need
   // a different agent, and L3 additionally checks that the verifier produced none of the evidence.
-  const selfVerified = needsVerifier && task.rigor === 'L1';
+  // L1 may be self-checked, but an IMPORTANT task may not: the skill says important work needs an
+  // independent verifier, and that promise outranks the L1 shortcut rather than contradicting it.
+  const selfVerified = needsVerifier && task.rigor === 'L1' && !task.important;
   const verifier = needsVerifier
     ? (selfVerified ? agent : selectVerifier(agent, roster, { capability: task.capability }))
     : null;
@@ -585,6 +618,15 @@ export function completeStage(state, id, agent, result = {}) {
     if (missing.length) {
       throw new Error(`Task ${id} cannot leave the specify stage without its work products: ${missing.join(', ')}`);
     }
+  }
+  // C: completing the verify stage IS the pass, so the pass must arrive with its evidence. Before
+  // this, a verifier could complete verify with nothing at all and the task moved on - the gate had
+  // a status but no witness.
+  if (task.phase === 'verify' && !result.evidence) {
+    throw new Error(
+      `Task ${id}: verification cannot PASS without criterion-linked evidence. ` +
+        'Pass --evidence (and --evidence-grade with the command, exit code and revision for E1).',
+    );
   }
   const nextStep = transitions[task.phase];
   if (!nextStep) throw new Error(`Task ${id} cannot complete unknown phase ${task.phase}`);
@@ -652,7 +694,15 @@ export function failVerification(state, id, agent, failure = {}) {
   task.phase = 'implement';
   task.assignedAgent = implementerForType(task.type, next.roster ?? DEFAULT_ROSTER);
   task.lock = null;
-  task.status = 'queued';
+  // E: the doctrine says a task stuck after three rounds is blocked rather than retried forever.
+  // That was only in the config; this makes it a state transition a coordinator has to clear.
+  const blockedAfter = 3;
+  if (task.verification.attempts >= blockedAfter) {
+    task.status = 'blocked';
+    event(next, id, 'blocked_after_rounds', { attempts: task.verification.attempts, criteria, findings });
+  } else {
+    task.status = 'queued';
+  }
   task.updatedAt = now();
   event(next, id, 'verification_failed', { agent, criteria, findings });
   return { state: next, task: copy(task) };
@@ -744,6 +794,15 @@ export function nextDispatch(state, id) {
   if (task.phase === 'evidence' && task.verification?.blocked && !task.verification?.override) {
     throw new Error(
       `Task ${id} is gated: verification failed and no override is recorded, so it cannot be dispatched to evidence`,
+    );
+  }
+  // The approval gate has to gate the thing it names. This used to report `approved: false` and
+  // still hand back a runnable argv, so a host adapter that actually executed the command would
+  // have bypassed the approval entirely.
+  if (task.externalAction && !task.externalAction.approved) {
+    throw new Error(
+      `Task ${id} carries an external action (${task.externalAction.kind}) that is not approved. ` +
+        `Record one with: approve --task ${id} --by <who> --scope <what>`,
     );
   }
   const rendered = agentCommand(task);

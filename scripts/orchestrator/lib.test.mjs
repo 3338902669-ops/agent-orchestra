@@ -385,11 +385,15 @@ test('each agent identity gets its own dry-run command', () => {
   assert.equal(d.requiresCoordinatorCoordination, false);
 });
 
-test('dispatch reports the external-action approval state', () => {
+test('dispatch refuses an unapproved external action, and allows it once approved', () => {
   const plain = createOne({ title: 'no-action' });
   assert.equal(nextDispatch(plain.state, plain.task.id).externalActionApproved, null);
   const gated = createOne({ title: 'deploy', externalAction: 'deploy' });
-  assert.equal(nextDispatch(gated.state, gated.task.id).externalActionApproved, false);
+  // Reporting the flag while still handing back a runnable argv was the hole: a host adapter that
+  // executed the command would have bypassed the approval gate entirely.
+  assert.throws(() => nextDispatch(gated.state, gated.task.id), /not approved/);
+  const approved = approveExternalAction(gated.state, gated.task.id, { approvedBy: 'ops', scope: 'staging only' }).state;
+  assert.equal(nextDispatch(approved, gated.task.id).externalActionApproved, true);
 });
 
 test('dispatch throws for non-dispatchable tasks', () => {
@@ -552,6 +556,73 @@ test('the packet may be supplied at create time instead', () => {
 });
 
 
+
+// ── the rules an independent review found were only documented ──────────────────────
+test('a resource held by a live task cannot be claimed by another task', () => {
+  const state = createState();
+  const a = createTask(state, { title: 'A', resources: ['src/foo.ts', 'src/bar.ts'] });
+  const b = createTask(a.state, { title: 'B', resources: ['src/foo.ts'] });
+  const c = createTask(b.state, { title: 'C', resources: ['src/other.ts'] });
+  const held = claimTask(c.state, a.task.id, a.task.assignedAgent).state;
+  // overlapping resource -> refused, and the message names who holds it
+  assert.throws(() => claimTask(held, b.task.id, b.task.assignedAgent), /resource already held by src\/foo\.ts/);
+  // disjoint resource -> fine
+  assert.equal(claimTask(held, c.task.id, c.task.assignedAgent).state.tasks[c.task.id].lock.owner, c.task.assignedAgent);
+  // once the holder completes the stage, the lock is released and the resource is free
+  const released = completeStage(held, a.task.id, a.task.assignedAgent, { spec: 's', acceptance: 'a' }).state;
+  assert.equal(released.tasks[a.task.id].lock, null);
+  assert.ok(claimTask(released, b.task.id, b.task.assignedAgent).state.tasks[b.task.id].lock);
+});
+
+test('a verification PASS must carry its witness', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'witness' });
+  let s = completeStage(claimTask(created, task.id, created.tasks[task.id].assignedAgent).state, task.id,
+    created.tasks[task.id].assignedAgent, { spec: 's', acceptance: 'a' }).state;
+  const implAgent = s.tasks[task.id].assignedAgent;
+  s = completeStage(claimTask(s, task.id, implAgent).state, task.id, implAgent, {}).state;
+  assert.equal(s.tasks[task.id].phase, 'verify');
+  const verifier = s.tasks[task.id].assignedAgent;
+  s = claimTask(s, task.id, verifier).state;
+  assert.throws(() => completeStage(s, task.id, verifier, {}), /cannot PASS without criterion-linked evidence/);
+  const passed = completeStage(s, task.id, verifier, { evidence: { grade: 'E2', text: 're-ran it', checkedBy: 'peer-x' } }).state;
+  // the verifier's record is a witness on the verification, not evidence authored by the verifier
+  assert.equal(passed.tasks[task.id].verification.witness.grade, 'E2');
+  assert.equal(passed.tasks[task.id].evidence.length, 0);
+});
+
+test('an important task may not self-verify, even at L1', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'flagged', rigor: 'L1', important: true,
+    executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
+  const done = driveToDone(created, task.id, 'ran it');
+  assert.equal(done.tasks[task.id].verification.selfVerified, false, 'important work needs an independent verifier');
+  assert.notEqual(done.tasks[task.id].verification.by, done.tasks[task.id].evidence.at(-1)?.agent);
+});
+
+test('three failed verifications block the task instead of retrying forever', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'stuck' });
+  let s = created;
+  for (let round = 0; round < 3; round++) {
+    // walk forward until the task is actually in the verify stage again
+    let t = s.tasks[task.id];
+    while (t.phase !== 'verify') {
+      const agent = t.assignedAgent;
+      s = claimTask(s, task.id, agent).state;
+      s = completeStage(s, task.id, agent, t.phase === 'specify' ? { spec: 's', acceptance: 'a' } : {}).state;
+      t = s.tasks[task.id];
+    }
+    const v = s.tasks[task.id];
+    const verifier = v.assignedAgent;
+    s = claimTask(s, task.id, verifier).state;
+    s = failVerification(s, task.id, verifier, { criteria: 'not met', findings: 'round ' + (round + 1) }).state;
+  }
+  const final = s.tasks[task.id];
+  assert.equal(final.verification.attempts, 3);
+  assert.equal(final.status, 'blocked', 'the third failure must block the task');
+  assert.throws(() => claimTask(s, task.id, final.assignedAgent), /blocked/);
+});
 // ── a check that exists must also hold on every path into it ────────────────────────
 test('E1 evidence carrying explicit nulls is refused, not just undefined', () => {
   const state = createState();
@@ -691,7 +762,28 @@ test('a routine task records that its start choices were assumed, not stated', (
 test('L2 cannot reach done without a graded evidence record', () => {
   const state = createState();
   const { state: created, task } = createTask(state, { title: 'shared', rigor: 'L2' });
-  assert.throws(() => driveToDone(created, task.id), /requires at least one graded evidence record/);
+  // First wall: a PASS cannot be recorded without its witness.
+  assert.throws(() => driveToDone(created, task.id), /cannot PASS without criterion-linked evidence/);
+  // Second wall: at the evidence stage, an empty record is refused for L2.
+  const atEvidence = {
+    ...created,
+    tasks: {
+      ...created.tasks,
+      [task.id]: {
+        ...created.tasks[task.id],
+        phase: 'evidence',
+        lock: null,
+        status: 'queued',
+        assignedAgent: 'specialist',
+        // verification already passed, so the only wall left is the evidence record itself
+        verification: { ...created.tasks[task.id].verification, status: 'passed', lastResult: 'pass' },
+      },
+    },
+  };
+  assert.throws(
+    () => completeStage(claimTask(atEvidence, task.id, 'specialist').state, task.id, 'specialist', {}),
+    /requires at least one graded evidence record/,
+  );
   const finished = driveToDone(created, task.id, 'ran the suite: exit 0');
   assert.equal(finished.tasks[task.id].phase, 'done');
 });
@@ -729,9 +821,10 @@ function driveToDone(state, id, evidence) {
     const agent = task.assignedAgent;
     const at = current.tasks[id].phase;
     current = claimTask(current, id, agent).state;
+    // A verification PASS must carry its evidence, so the pass arrives with one too.
     const payload = at === 'specify'
       ? { spec: 'the change under test', acceptance: 'the suite exits 0' }
-      : (at === 'evidence' && evidence ? { evidence } : {});
+      : ((at === 'evidence' || at === 'verify') && evidence ? { evidence } : {});
     current = completeStage(current, id, agent, payload).state;
   }
   throw new Error('task did not reach done: ' + current.tasks[id].phase);

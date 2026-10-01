@@ -52,6 +52,11 @@ Rules:
 | verification `planned` | the verify stage must be executed by an agent that did not implement the change; without one, the result is at most E2/E3 |
 | verification `skip` | self-check only; every completion claim is capped at E3/E4 and must say "not independently verified" |
 
+**What "independent verification: skip" does and does not mean.** It means no *additional*
+verification round beyond the gate. It does not switch off the gate itself: at L2 and L3 the
+verifier is still a different agent from the implementer, because that is what the level means.
+Read the three answers as "how much more than the baseline", never as "whether the baseline holds".
+
 ## 4. Enforcement
 
 - The queue **refuses to create** an important task that omits any of the three choices. An unknown or misspelled value is also refused. A rejected creation is a non-zero exit, never a silent default.

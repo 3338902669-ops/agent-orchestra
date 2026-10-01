@@ -1,3 +1,11 @@
+# READ THIS FIRST - which file actually routes work.
+#   * This file is the documented reference: it says how activation, the intake gate, rigor,
+#     evidence grading and the roster are meant to be configured, and the repo validates it.
+#   * It is NOT read at runtime. The engine's roster comes from the built-in default or from
+#     `node scripts/orchestrator/orchestrator.mjs init --roster <file.json>`.
+#   * Editing this file does not change routing. Copy the roster block into a JSON file and pass
+#     that, or edit the default in scripts/orchestrator/lib.mjs.
+#   * See KNOWN-FINDINGS F-013.
 version: 2
 mode: capability-first
 minimum_agents_for_auto_routing: 3

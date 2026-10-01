@@ -98,7 +98,10 @@ step('cli-io', 'verification gate holds under real CLI use', () => {
     return fail('complete failed');
   }
   if (o('claim', '--task', 'task-0001', '--agent', 'generalist').status !== 0) return fail('second claim failed');
-  if (o('complete', '--task', 'task-0001', '--agent', 'generalist').status !== 0) return fail('verify failed');
+  // A verification PASS carries its evidence (the gate rule), so the smoke test supplies one.
+  if (o('complete', '--task', 'task-0001', '--agent', 'generalist', '--evidence', 'gate smoke: verify passed').status !== 0) {
+    return fail('verify failed');
+  }
   if (o('claim', '--task', 'task-0001', '--agent', 'specialist').status !== 0) return fail('verify claim failed');
   if (o('fail', '--task', 'task-0001', '--agent', 'specialist', '--criteria', 'acceptance test fails').status !== 0) return fail('fail command rejected');
   const task = JSON.parse(readFileSync(state, 'utf8')).tasks['task-0001'];
