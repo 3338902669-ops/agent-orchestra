@@ -240,10 +240,10 @@ function runCommand(args) {
     const evidence = grade
       ? {
           grade,
-          text: text ?? null,
-          command: value(args, '--evidence-command', false) ?? null,
-          revision: value(args, '--evidence-revision', false) ?? null,
-          exitCode: exitCodeRaw === undefined || exitCodeRaw === null ? null : Number(exitCodeRaw),
+          text: text ?? undefined,
+          command: value(args, '--evidence-command', false) ?? undefined,
+          revision: value(args, '--evidence-revision', false) ?? undefined,
+          exitCode: exitCodeRaw === undefined || exitCodeRaw === null ? undefined : Number(exitCodeRaw),
         }
       : text;
     const result = completeStage(state, id, value(args, '--agent'), {

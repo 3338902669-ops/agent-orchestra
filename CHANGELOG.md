@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.4.1] - 2026-10-02
+
+### Fixed
+- **E1 evidence could be recorded with no command, no exit code and no revision.** The CLI filled
+  absent flags with `null` while the validator only rejected `undefined` and the empty string, so
+  `--evidence-grade E1 --evidence "tests ok"` was accepted and the task reached `done` carrying an
+  "E1" whose three required fields were all null. The library path was fine, which is why the tests
+  passed while the CLI did not: the check existed but did not hold on every way in. Both sides fixed
+  (`== null` in the engine, no manufactured nulls in the CLI) and the CLI path now has its own test.
+- **An L3 task did not trigger the intake gate.** `create --rigor L3` without `--important` silently
+  recorded `single / skip / skip`, contradicting "never default these on the user's behalf". L3 is
+  consequential, so the three choices are now required for it, and `important` is set accordingly.
+
 ## [2.4.0] - 2026-10-01
 
 ### Changed

@@ -75,6 +75,9 @@ applies.
 
 ## Important-task intake gate
 
+Applies to any task marked important - and to every **L3** task, because consequential work is
+important by definition. An external action is always L3, so it is covered twice over.
+
 Before the **first write, first dispatch or first verification** of an important task, ask the user and record three choices - never default them:
 
 1. Execute solo, or start collaborative mode?

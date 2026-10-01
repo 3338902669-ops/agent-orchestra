@@ -551,6 +551,64 @@ test('the packet may be supplied at create time instead', () => {
   assert.equal(done.tasks[created.task.id].phase, 'implement');
 });
 
+
+// ── a check that exists must also hold on every path into it ────────────────────────
+test('E1 evidence carrying explicit nulls is refused, not just undefined', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'nulls', rigor: 'L1' });
+  const claimed = claimTask(created, task.id, task.assignedAgent).state;
+  // This is the shape the CLI produced: the flags were absent, so it filled them with null,
+  // and a check for `undefined` let a command-less, exit-code-less E1 through to done.
+  const nulls = { grade: 'E1', text: 'tests ok', command: null, exitCode: null, revision: null };
+  assert.throws(
+    () => completeStage(claimed, task.id, task.assignedAgent, { evidence: nulls, spec: 's', acceptance: 'a' }),
+    /E1 evidence must carry command, exitCode, revision/,
+  );
+});
+
+test('the CLI cannot record an E1 without its fields (the layer that was broken)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e1-cli-'));
+  const stateFile = join(dir, 'queue.json');
+  const cli = fileURLToPath(new URL('./orchestrator.mjs', import.meta.url));
+  const env = { ORCHESTRATOR_LOCK_WAIT_MS: '300' };
+  const run = (args) => runCli(cli, stateFile, args, env);
+  assert.equal((await run(['init'])).code, 0);
+  const created = JSON.parse((await run(['create', '--title', 'e1', '--type', 'build'])).out);
+  const id = created.id;
+  // walk to the evidence phase, acting as whoever the queue assigns
+  for (let i = 0; i < 6; i++) {
+    const task = JSON.parse(readFileSync(stateFile, 'utf8')).tasks[id];
+    if (task.phase === 'evidence' || task.phase === 'done') break;
+    const agent = task.assignedAgent;
+    await run(['claim', '--task', id, '--agent', agent]);
+    const args = ['complete', '--task', id, '--agent', agent, '--evidence', 'stage done'];
+    if (task.phase === 'specify') args.push('--spec', 's', '--acceptance', 'a');
+    await run(args);
+  }
+  const before = JSON.parse(readFileSync(stateFile, 'utf8')).tasks[id];
+  assert.equal(before.phase, 'evidence', 'the walk should stop at the evidence phase');
+  await run(['claim', '--task', id, '--agent', before.assignedAgent]);
+  const bad = await run(['complete', '--task', id, '--agent', before.assignedAgent,
+    '--evidence-grade', 'E1', '--evidence', 'tests ok']);
+  assert.equal(bad.code, 1, 'an E1 with no command, exit code or revision must be refused');
+  assert.match(bad.err, /must carry command, exitCode, revision/);
+  const after = JSON.parse(readFileSync(stateFile, 'utf8')).tasks[id];
+  assert.notEqual(after.phase, 'done');
+  assert.ok(!(after.evidence || []).some((e) => e.grade === 'E1' && e.command == null), 'no null-bearing E1 may be stored');
+});
+
+test('an L3 task must state the three start choices, even without --important', () => {
+  const state = createState();
+  // L3 is consequential by definition, so the intake gate applies whether or not the caller says so.
+  assert.throws(
+    () => createTask(state, { title: 'consequential', rigor: 'L3' }),
+    /Important task requires: --execution-mode, --security, --independent-verify/,
+  );
+  const ok = createTask(state, { title: 'consequential', rigor: 'L3',
+    executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
+  assert.equal(ok.task.important, true, 'an L3 task is important by definition');
+  assert.equal(ok.task.startChoicesSource, 'stated');
+});
 // ── the other grades, and the L1 rung of the rigor ladder ────────────────────────────
 test('E2 must name a peer, and the peer must not be the author', () => {
   const state = createState();
@@ -615,7 +673,7 @@ test('a task with an external action must state all three start choices', () => 
   );
   assert.throws(
     () => createTask(state, { title: 'deploy', type: 'build', rigor: 'L3', externalAction: 'deploy' }),
-    /requires all three start choices/,
+    /Important task requires: --execution-mode, --security, --independent-verify/,
   );
   const ok = createTask(state, { title: 'deploy', type: 'build', rigor: 'L3', externalAction: 'deploy', important: true,
     executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
@@ -649,7 +707,7 @@ test('an L3 verifier may not also be an author of the evidence', () => {
     routes: { specify: 'impl', implement: 'impl', verify: 'solo', evidence: 'solo' },
   };
   const state = createState(roster);
-  const { state: created, task } = createTask(state, { title: 'consequential', rigor: 'L3' });
+  const { state: created, task } = createTask(state, { title: 'consequential', rigor: 'L3', executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
   const evidence = { grade: 'E1', text: 'gate evidence', command: 'node scripts/gate.mjs', exitCode: 0, revision: 'abc123' };
   assert.throws(
     () => driveToDone(created, task.id, evidence),
@@ -683,7 +741,9 @@ test('rigor defaults to L2 and must be a level the engine accepts', () => {
   const state = createState();
   assert.equal(createTask(state, { title: 'defaulted' }).task.rigor, 'L2');
   for (const level of RIGOR_LEVELS) {
-    assert.equal(createTask(state, { title: 'r-' + level, rigor: level }).task.rigor, level);
+    // L3 is consequential, so it has to answer the intake questions; L1 and L2 need not.
+    const extra = level === 'L3' ? { executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' } : {};
+    assert.equal(createTask(state, { title: 'r-' + level, rigor: level, ...extra }).task.rigor, level);
   }
   assert.throws(() => createTask(state, { title: 'bad', rigor: 'L9' }), /Invalid rigor/);
 });
@@ -732,7 +792,7 @@ test('E1 evidence must carry the command, the exit code and the revision', () =>
 
 test('an L3 task cannot reach done without E1 evidence', () => {
   const state = createState();
-  const { state: created, task } = createTask(state, { title: 'consequential', rigor: 'L3' });
+  const { state: created, task } = createTask(state, { title: 'consequential', rigor: 'L3', executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
   // Self-report only: the last step must refuse.
   assert.throws(() => driveToDone(created, task.id, 'I checked it'), /cannot reach done without E1 evidence/);
   // With a reproducible artifact it goes through.

@@ -57,6 +57,9 @@ Rules:
 - The queue **refuses to create** an important task that omits any of the three choices. An unknown or misspelled value is also refused. A rejected creation is a non-zero exit, never a silent default.
 - The recorded choices travel with the task and into every dispatch prompt, together with the constraint that a planned scan must not be started without a further confirmation.
 - A task whose recorded mode contradicts the run (for example, `collaborative` recorded but one agent did everything) is a coordination defect: stop and reconcile before continuing.
+- **L3 always states all three.** Rigor L3 means consequential - irreversible, published, deployed -
+  so it is important by definition and the engine requires the three answers even when the caller
+  never passed `--important`. A consequential task cannot silently default `security_scan` to skip.
 - **A task with an external action always states all three.** `create --external-action <kind>` without
   `--execution-mode`, `--security` and `--independent-verify` is refused, because "nobody asked" must
   never mean "no scan, no independent verification" for something that leaves the machine.

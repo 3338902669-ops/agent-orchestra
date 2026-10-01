@@ -117,7 +117,10 @@ export function normalizeEvidence(agent, ev) {
     throw new Error(`evidence.grade is required and must be one of ${EVIDENCE_GRADES.join(', ')}`);
   }
   if (grade === 'E1') {
-    const missing = E1_REQUIRED_FIELDS.filter((field) => ev[field] === undefined || ev[field] === '');
+    // == null catches undefined AND null. The CLI used to fill missing flags with null while this
+    // check only looked for undefined, so "E1 with no command, no exit code and no revision" was
+    // accepted and could reach done - a check that existed but did not hold.
+    const missing = E1_REQUIRED_FIELDS.filter((field) => ev[field] == null || ev[field] === '');
     if (missing.length) {
       throw new Error(`E1 evidence must carry ${missing.join(', ')} - a reproducible result needs the command, its exit code and the revision it applies to`);
     }
@@ -393,7 +396,10 @@ export function createTask(state, input) {
   }
   // Start choices: important tasks must state all three explicitly, so that an
   // important task can never enter the queue with an implied scan or collaboration mode.
-  const important = input.important === true;
+  // L3 is consequential (irreversible, published, deployed), so it is important by definition: the
+  // intake gate applies to it even when the caller never passed --important. Measured before, said
+  // after: a task that silently defaults security_scan to "skip" contradicts the gate.
+  const important = input.important === true || input.rigor === 'L3';
   const executionMode = input.executionMode;
   const security = input.security;
   const independentVerify = input.independentVerify;
