@@ -152,6 +152,28 @@ step('hygiene', 'no private paths, secrets or host-specific names ship', () => {
     : { status: 0, durationMs: 0, out: 'no private paths, secrets or host-specific names', err: '' };
 }, 'exit 0: zero matches across every shipped file');
 
+step('benchmark', 'the protocol still stops every failure mode the README claims it stops', () => {
+  const r = node(['bench/protocol-benchmark.mjs']);
+  if (r.status !== 0) {
+    return { status: 1, durationMs: 0, out: '', err: r.err || 'the benchmark did not run' };
+  }
+  // The README publishes this table, so the gate re-derives it: any non-zero value in the protocol
+  // column (other than the retry count, which should be the policy ceiling) is a rule that broke.
+  const rows = (r.out.match(/^\|.*\|$/gm) || []).filter((line) => !/^\|[-\s|]+\|$/.test(line) && !/Failure mode/.test(line));
+  // One row is expected to be non-zero: the retry ceiling, which must equal the policy value (3).
+  // Everything else must be zero - any other number is a rule that stopped holding.
+  const bad = rows.filter((line) => {
+    const cells = line.split('|').map((c) => c.trim());
+    const value = cells[cells.length - 2];
+    const isRetryRow = /attempts before the loop stops/.test(line);
+    return isRetryRow ? value !== '3' : value !== '0';
+  });
+  if (bad.length) {
+    return { status: 1, durationMs: 0, out: '', err: 'the protocol column is not zero:\n' + bad.join('\n') };
+  }
+  return { status: 0, durationMs: 0, out: rows.length + ' failure modes, protocol column all zero', err: '' };
+}, 'exit 0: every failure mode is stopped by the engine');
+
 step('config-usage', 'no config key pretends to be behaviour the engine does not have', () => {
   const r = node(['scripts/check-config-usage.mjs']);
   return r.status === 0

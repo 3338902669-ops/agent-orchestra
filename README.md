@@ -1,20 +1,58 @@
 # Agent Orchestra
 
-> **The difference is enforcement.** Every rule below is a check in code, not advice in a prompt. The engine refuses the
-> operation; it does not ask the agent to remember.
->
-> - **One writer per RESOURCE**, not just per task: `--resources src/a.ts,src/b.ts`. A second task claiming an
->   overlapping resource is refused, and the refusal names the holder.
-> - **A verification PASS must carry its witness.** The verifier is never the implementer, and the pass arrives with
->   criterion-linked evidence - stored as the verifier's witness, never as their own evidence.
-> - **Three failed rounds block the task** instead of retrying forever.
-> - **An external action cannot be dispatched until it is approved** - and the approval scope must cover the action.
-> - **Consequential work (L3) gets a domain review** from a third party who neither implemented nor verified it.
-> - **One gate command that can fail:** `node scripts/gate.mjs` injects ten known faults and must reject every one of
->   them before it reports PASS.
-> - Zero dependencies, Node 18+, MIT. 87 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation cases.
->
-> 中文对照：`references/zh-contrast.md`
+**A governed coordination protocol for multi-agent AI work.**
+
+> Agents can work. **They cannot declare success.**
+
+Every multi-agent project eventually meets the same failure: an agent says it is done, and nothing in
+the system is able to disagree. This protocol removes that possibility by making the interesting rules
+checks in code rather than requests in a prompt.
+
+```
+AGENT MAY                    AGENT MAY NOT
+  claim work                   silently overwrite another agent's resource
+  own resources                verify its own L2/L3 work
+  implement                    pass verification without evidence
+  hand off                     retry forever after failing
+  verify others' work          perform an external action without approval
+  produce graded evidence      declare success without satisfying the gate
+```
+
+### Measured, not asserted
+
+`node bench/protocol-benchmark.mjs` - six failure modes, three coordination models, scripted actors,
+no model calls. Re-run it and you get this table:
+
+| Failure mode | What is counted | Single agent | Naive multi-agent | Agent Orchestra |
+|---|---|---|---|---|
+| Two agents write the same resource | conflicting writes that landed | 1 | 1 | **0** |
+| Author declares done with no evidence | self-declared successes accepted | 1 | 1 | **0** |
+| Implementer verifies its own work | self-verifications accepted | 1 | 1 | **0** |
+| Verification keeps failing | attempts before the loop stops | 25 | 25 | **3** |
+| Deploy attempted without approval | unapproved actions dispatched | 1 | 1 | **0** |
+| Failure followed by a success claim | failures that reached done | 1 | 1 | **0** |
+
+Scope, stated plainly: this measures the **coordination layer** - which failure modes get through - not
+model quality, and it uses deterministic actors rather than LLMs so that it is reproducible. The
+methodology and its limits are in [`bench/README.md`](bench/README.md).
+
+### The normative part
+
+[**AGENT-ORCHESTRA-PROTOCOL.md**](AGENT-ORCHESTRA-PROTOCOL.md) defines eight contracts - Task,
+Resource, Ownership, Handoff, Verification, Evidence, Approval, Recovery - each with the code that
+enforces it, the behaviour on violation, and its honest limit. The contracts are stated in terms of
+operations and observed behaviour, not of this CLI, so another host can implement them over its own
+storage and prove conformance with the same benchmark.
+
+### What this costs you
+
+Zero dependencies, Node 18+, MIT. 87 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation
+cases, and one gate command (`node scripts/gate.mjs`) that CI and your machine both run - it injects
+ten known faults and must reject every one of them before it reports PASS.
+
+中文对照：`references/zh-contrast.md`
+
+---
 
 One portable, capability-first protocol for multi-agent work along **two axes**: coordinating a team inside one batch of tasks, and handing that work across sessions, tools and days without losing state. It ships explicit ownership, independent verification, graded evidence, deterministic dispatch, a shared handoff record and token-aware routing.
 
