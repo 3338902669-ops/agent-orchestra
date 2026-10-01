@@ -102,7 +102,9 @@ evidence it passed on.**
   record beside it.
 - **L3 additionally**: the verifier MUST NOT appear among the task's evidence authors, and
   consequential work MUST pass a **domain review** by a third party who neither implemented nor
-  verified it.
+  verified it, AND who is scored for the `domain` role. A roster that declares no domain capability
+  fails closed: independence alone is not domain competence, and "somebody else looked at it" is not
+  a domain review.
 
 | | |
 |---|---|
@@ -122,7 +124,17 @@ evidence it passed on.**
 | E4 | planned | `plan` or `target` |
 
 - An ungraded sentence MUST be recorded as E3 with a note, so it can never borrow E1's voice.
-- L2 and L3 MUST NOT reach `done` without at least one graded record; L3 MUST have an E1.
+- The floor is per level, and the engine implements it as a table rather than a sentence:
+
+  | Rigor | Floor for `done` |
+  |---|---|
+  | L1 | any grade, E1-E4 |
+  | L2 | **E1 or E2** - a self-report is not verification at this level |
+  | L3 | **E1** - a result someone else can re-run |
+
+  An earlier version tested only "is there any evidence at all", so an L2 task carrying a single
+  E3 self-report reached `done`. The specification promised the floor; the runtime did not enforce
+  it. That is the exact failure this project exists to remove, so it is now a table with tests.
 
 | | |
 |---|---|
@@ -136,7 +148,11 @@ evidence it passed on.**
 
 **An external action MUST NOT be dispatched until an approval covering it is recorded.**
 
-- Approval is per task and per scope; the scope MUST name the action's declared target (or its kind).
+- Approval gates the **external step**, not the task: internal stages (specify, implement, verify)
+  may proceed without it, and the step that performs the action is declared by `externalAction.at`
+  (default `implement`).
+- The approval scope MUST **equal** the action's declared target (or its kind) exactly. A substring
+  match is not an authorisation: "not production" must not unlock production.
 - An approval for one environment MUST NOT unlock another: "approved for staging" does not
   authorise a production deploy.
 - Only an explicit approval record unblocks the action. Passing verification does not.

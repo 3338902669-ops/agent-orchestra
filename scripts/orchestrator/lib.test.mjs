@@ -56,7 +56,15 @@ function createOne(input) {
   return createTask(createState(), withChoices);
 }
 
-function step(state, id, agent, evidence = 'ran the stage: exit 0') {
+// The default is E2, not a bare sentence: a string degrades to E3, and L2 requires E1 or E2.
+const DEFAULT_EVIDENCE = { grade: 'E2', text: 'a peer re-ran the stage', checkedBy: 'peer-agent' };
+// A bare sentence normalises to E3, and L2 now requires E1 or E2. The walk helpers turn a string
+// into a graded E2 record so a flow test exercises the stage machine; the floor itself is tested
+// explicitly further down.
+const asEvidence = (evidence) => (typeof evidence === 'string'
+  ? { grade: 'E2', text: evidence, checkedBy: 'peer-agent' }
+  : (evidence ?? DEFAULT_EVIDENCE));
+function step(state, id, agent, evidence = DEFAULT_EVIDENCE) {
   // The default carries a graded record because rigor L2 (the default) now requires one to reach
   // done, and the packet because the specify stage cannot end without its work products.
   const claimed = claimTask(state, id, agent).state;
@@ -64,7 +72,7 @@ function step(state, id, agent, evidence = 'ran the stage: exit 0') {
   const packet = task.phase === 'specify'
     ? { spec: 'the change under test', acceptance: 'the suite exits 0' }
     : {};
-  return completeStage(claimed, id, agent, { evidence, ...packet }).state;
+  return completeStage(claimed, id, agent, { evidence: asEvidence(evidence), ...packet }).state;
 }
 
 // ── state shape ──────────────────────────────────────────────────────────────
@@ -385,24 +393,31 @@ test('each agent identity gets its own dry-run command', () => {
   assert.equal(d.requiresCoordinatorCoordination, false);
 });
 
-test('dispatch refuses an unapproved external action, and allows it once approved', () => {
+test('an unapproved external action blocks its own step, not the internal stages', () => {
   const plain = createOne({ title: 'no-action' });
   assert.equal(nextDispatch(plain.state, plain.task.id).externalActionApproved, null);
   const gated = createOne({ title: 'deploy', externalAction: 'deploy' });
+  // Internal work may proceed: the approval gates the external STEP, not the whole task.
+  assert.equal(nextDispatch(gated.state, gated.task.id).externalActionApproved, false);
+  // Drive the task to the stage that performs the action (externalAction.at defaults to implement).
+  const atImplement = step(gated.state, gated.task.id, 'generalist');
+  assert.equal(atImplement.tasks[gated.task.id].phase, 'implement');
   // Reporting the flag while still handing back a runnable argv was the hole: a host adapter that
   // executed the command would have bypassed the approval gate entirely.
-  assert.throws(() => nextDispatch(gated.state, gated.task.id), /not approved/);
-  const approved = approveExternalAction(gated.state, gated.task.id, { approvedBy: 'ops', scope: 'deploy to staging' }).state;
+  assert.throws(() => nextDispatch(atImplement, gated.task.id), /is not approved/);
+  const approved = approveExternalAction(atImplement, gated.task.id, { approvedBy: 'ops', scope: 'deploy' }).state;
   assert.equal(nextDispatch(approved, gated.task.id).externalActionApproved, true);
 });
 
-test('an approval scope must cover the action it unlocks', () => {
-  // A scope that names somewhere else must not unlock this action.
+test('an approval scope must EQUAL the action target, not merely appear in it', () => {
   const s = createOne({ title: 'prod-deploy', externalAction: 'deploy', externalTarget: 'production' });
-  const approved = approveExternalAction(s.state, s.task.id, { approvedBy: 'ops', scope: 'staging only' }).state;
-  assert.throws(() => nextDispatch(approved, s.task.id), /does not cover "production"/);
-  // Naming the target unlocks it.
-  const right = approveExternalAction(s.state, s.task.id, { approvedBy: 'ops', scope: 'deploy to production on Friday' }).state;
+  const atImplement = step(s.state, s.task.id, 'generalist');
+  const wrong = approveExternalAction(atImplement, s.task.id, { approvedBy: 'ops', scope: 'staging' }).state;
+  assert.throws(() => nextDispatch(wrong, s.task.id), /must equal the action's target exactly/);
+  // A substring that merely mentions the target is not an authorisation either.
+  const sneaky = approveExternalAction(atImplement, s.task.id, { approvedBy: 'ops', scope: 'not production' }).state;
+  assert.throws(() => nextDispatch(sneaky, s.task.id), /must equal the action's target exactly/);
+  const right = approveExternalAction(atImplement, s.task.id, { approvedBy: 'ops', scope: 'production' }).state;
   assert.equal(nextDispatch(right, s.task.id).externalActionApproved, true);
 });
 
@@ -769,13 +784,11 @@ test('a routine task records that its start choices were assumed, not stated', (
 });
 
 // ── rigor decides what is mandatory (R1) and who may verify (R2) ─────────────────────
-test('L2 cannot reach done without a graded evidence record', () => {
+test('L2 requires E1 or E2 evidence: a self-report cannot close it', () => {
   const state = createState();
   const { state: created, task } = createTask(state, { title: 'shared', rigor: 'L2' });
-  // First wall: a PASS cannot be recorded without its witness.
-  assert.throws(() => driveToDone(created, task.id), /cannot PASS without criterion-linked evidence/);
-  // Second wall: at the evidence stage, an empty record is refused for L2.
-  const atEvidence = {
+  const passed = { ...created.tasks[task.id].verification, status: 'passed', lastResult: 'pass' };
+  const atEvidence = () => ({
     ...created,
     tasks: {
       ...created.tasks,
@@ -785,26 +798,34 @@ test('L2 cannot reach done without a graded evidence record', () => {
         lock: null,
         status: 'queued',
         assignedAgent: 'specialist',
-        // verification already passed, so the only wall left is the evidence record itself
-        verification: { ...created.tasks[task.id].verification, status: 'passed', lastResult: 'pass' },
+        verification: passed,
       },
     },
-  };
+  });
+  // An empty record is refused.
   assert.throws(
-    () => completeStage(claimTask(atEvidence, task.id, 'specialist').state, task.id, 'specialist', {}),
+    () => completeStage(claimTask(atEvidence(), task.id, 'specialist').state, task.id, 'specialist', {}),
     /requires at least one graded evidence record/,
   );
-  const finished = driveToDone(created, task.id, 'ran the suite: exit 0');
-  assert.equal(finished.tasks[task.id].phase, 'done');
+  // A self-report is refused too: at L2 the floor is E1 or E2, and E3 is neither.
+  const claimed = claimTask(atEvidence(), task.id, 'specialist').state;
+  assert.throws(
+    () => completeStage(claimed, task.id, 'specialist', { evidence: { grade: 'E3', text: 'looks fine to me' } }),
+    /requires E1 or E2 evidence/,
+  );
+  // E2 closes it.
+  const done = completeStage(claimed, task.id, 'specialist',
+    { evidence: { grade: 'E2', text: 'a peer re-ran the suite', checkedBy: 'peer-x' } }).state;
+  assert.equal(done.tasks[task.id].phase, 'done');
 });
 
 test('an L3 verifier may not also be an author of the evidence', () => {
   // One agent owns both verify and evidence, while a different agent implements.
   const roster = {
     agents: {
-      impl:   { cost: 1, scores: { specify: 3, triage: 1, implement: 3, verify: 1, evidence: 1, environment: 1 } },
-      solo:   { cost: 2, scores: { specify: 2, triage: 1, implement: 1, verify: 3, evidence: 3, environment: 1 } },
-      other:  { cost: 3, scores: { specify: 1, triage: 1, implement: 1, verify: 2, evidence: 2, environment: 1 } },
+      impl:   { cost: 1, scores: { specify: 3, triage: 1, implement: 3, verify: 1, evidence: 1, environment: 1, domain: 1 } },
+      solo:   { cost: 2, scores: { specify: 2, triage: 1, implement: 1, verify: 3, evidence: 3, environment: 1, domain: 1 } },
+      other:  { cost: 3, scores: { specify: 1, triage: 1, implement: 1, verify: 2, evidence: 2, environment: 1, domain: 3 } },
     },
     routes: { specify: 'impl', implement: 'impl', verify: 'solo', evidence: 'solo' },
   };
@@ -823,7 +844,7 @@ test('an L3 verifier may not also be an author of the evidence', () => {
 // ── rigor: how much verification a change carries ─────────────────────────────────────
 
 /** Drive a task from its current phase to done, optionally supplying evidence at the last step. */
-function driveToDone(state, id, evidence) {
+function driveToDone(state, id, evidence = DEFAULT_EVIDENCE) {
   let current = state;
   for (let i = 0; i < 10; i++) {
     const task = current.tasks[id];
@@ -834,7 +855,7 @@ function driveToDone(state, id, evidence) {
     // A verification PASS and a domain review both carry a record of what they checked.
     const payload = at === 'specify'
       ? { spec: 'the change under test', acceptance: 'the suite exits 0' }
-      : ((at === 'evidence' || at === 'verify' || at === 'domain_review') && evidence ? { evidence } : {});
+      : ((at === 'evidence' || at === 'verify' || at === 'domain_review') ? { evidence: asEvidence(evidence) } : {});
     current = completeStage(current, id, agent, payload).state;
   }
   throw new Error('task did not reach done: ' + current.tasks[id].phase);
@@ -893,11 +914,11 @@ test('E1 evidence must carry the command, the exit code and the revision', () =>
   assert.equal(done.tasks[task.id].evidence.at(-1).exitCode, 0);
 });
 
-test('an L3 task cannot reach done without E1 evidence', () => {
+test('an L3 task requires E1 evidence', () => {
   const state = createState();
   const { state: created, task } = createTask(state, { title: 'consequential', rigor: 'L3', executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
   // Self-report only: the last step must refuse.
-  assert.throws(() => driveToDone(created, task.id, 'I checked it'), /cannot reach done without E1 evidence/);
+  assert.throws(() => driveToDone(created, task.id, 'I checked it'), /requires E1 evidence/);
   // With a reproducible artifact it goes through.
   const finished = driveToDone(created, task.id, {
     grade: 'E1', text: 'gate evidence', command: 'node scripts/gate.mjs', exitCode: 0, revision: 'abc123',

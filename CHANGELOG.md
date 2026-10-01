@@ -2,6 +2,40 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.5.1] - 2026-10-02
+
+A verification pass that compared the specification against the runtime found two release blockers and
+three fidelity gaps. Each was reproduced before being fixed.
+
+### Fixed
+- **The frontmatter did not parse, and the gate said it did.** `description` was written as a plain
+  YAML scalar containing ": ", which YAML reads as a nested mapping - GitHub rendered "mapping values
+  are not allowed in this context". The gate checked for the presence of `name:` and `description:`
+  with a regex, so it reported PASS on a document no parser would accept. The description is now a
+  block scalar, and `scripts/check-frontmatter.mjs` PARSES the subset of YAML a frontmatter may use
+  (plain scalars containing ": " are rejected with a line number). The self-test now includes that
+  exact mutation, so the false qualification cannot return.
+- **The L2 evidence floor was documented but not enforced.** `completeStage` tested only whether the
+  evidence list was non-empty, so an L2 task carrying a single E3 self-report reached `done`, while
+  the standard promised E1 or E2. The floor is now a table (L1 any grade, L2 E1/E2, L3 E1) with
+  tests for the refusal and the two ways through.
+
+### Changed
+- **Approval gates the external step, not the task.** Blocking every dispatch of a task that carries
+  an external action stopped internal work too; the step is declared by `externalAction.at`
+  (default `implement`) and only that step waits for approval.
+- **The approval scope is matched structurally.** It must EQUAL the action's target (or kind); a
+  substring test let "not production" unlock production.
+- **The domain reviewer must be domain-qualified.** `selectDomainReviewer` used to fall back to any
+  third-party verifier and record `fallback: true`, which quietly downgraded "reviewed by someone who
+  knows this domain" to "reviewed by someone else". It now fails closed.
+- **Roster lookups use `Object.hasOwn`.** A route named `constructor` resolved through the prototype
+  chain and handed the task to a non-existent agent (F-005).
+- **`scripts/install.sh` shipped with CRLF endings**, so `bash -n` failed on the published ZIP. Both
+  installers are LF, the gate checks line endings, and CI runs `bash -n` on a fresh checkout.
+
+Gate: 13 steps. 87 engine tests, 8 acceptance, 8 handoff.
+
 ## [2.5.0] - 2026-10-02
 
 ### Added

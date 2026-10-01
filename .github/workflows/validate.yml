@@ -18,6 +18,12 @@ jobs:
       # One command, one definition of "checked": CI and a local machine run exactly this.
       # The runner self-tests first (it injects known-bad config and requires rejection), so a
       # gate that quietly stopped checking anything fails instead of reporting green.
+      # An independent reviewer unpacked the ZIP and found install.sh with CRLF endings, which bash
+      # refuses. The gate checks the working tree; this checks the file the way a user receives it.
+      - name: Shell scripts parse on a fresh checkout
+        run: |
+          bash -n scripts/install.sh
+          echo "install.sh parses"
       - name: Run the gate
         run: node scripts/gate.mjs --evidence evidence
       - name: Show the evidence record

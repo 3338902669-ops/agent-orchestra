@@ -159,7 +159,12 @@ function namedOwner(role, roster, type) {
   const routes = roster?.routes ?? {};
   const named = role === 'implement' ? routes.implement?.[type] : routes[role];
   if (!named) return null;
-  const agent = rosterAgents(roster)[named];
+  // Own properties only: `agents['constructor']` would otherwise resolve through the prototype
+  // chain and hand a task to an agent that does not exist. Names that are not declared are ignored,
+  // which is the documented behaviour for a missing route.
+  const agents = rosterAgents(roster);
+  if (!Object.hasOwn(agents, named)) return null;
+  const agent = agents[named];
   if (!agent || agent.available === false) return null;
   return named;
 }
@@ -311,16 +316,19 @@ export function selectVerifier(implementer, roster = DEFAULT_ROSTER, options = {
 /**
  * Pick the domain reviewer for consequential work.
  *
- * The reviewer must be a THIRD party: not the implementer, not the verifier. A roster that scores
- * nobody for the `domain` role falls back to the best verify-role agent that took no part, and the
- * record says it fell back, so the gap is visible rather than silently filled.
+ * The reviewer must be a THIRD party: not the implementer, not the verifier. It must also be
+ * DOMAIN-QUALIFIED: a generic verifier is independent but does not know the domain, and "somebody
+ * looked at it" is not a domain review.
+ *
+ * This used to fall back to the best verify-role agent and record `fallback: true`. That silently
+ * downgraded the guarantee from "reviewed by someone who knows this domain" to "reviewed by someone
+ * else", so it now FAILS CLOSED: no declared domain capability means no domain review, and the task
+ * cannot proceed until the roster declares one.
  */
 export function selectDomainReviewer(roster = DEFAULT_ROSTER, { exclude = [] } = {}) {
   const scored = selectAgent('domain', { roster, exclude });
   if (scored && scored.score > 0) return { id: scored.id, score: scored.score, fallback: false };
-  const alt = selectAgent('verify', { roster, exclude });
-  if (!alt) return null;
-  return { id: alt.id, score: alt.score, fallback: true };
+  return null;
 }
 
 /** Convenience wrapper over selectVerifier for the default roster. */
@@ -611,14 +619,26 @@ export function completeStage(state, id, agent, result = {}) {
         'Re-run the verify stage, or record an explicit override with approvedBy, scope and reason.',
     );
   }
-  // Rigor L3 means the blast radius is irreversible or published, so a graded, reproducible
-  // artifact is required - not a sentence saying it looked fine.
-  if (task.phase === 'evidence' && task.rigor !== 'L1' && task.evidence.length === 0) {
-    // R1, enforced rather than documented: the rigor level decides which activities are mandatory,
-    // and at L2 and above "we finished it" has to carry at least one graded record.
+  // The evidence FLOOR, per level. This used to test only `evidence.length === 0`, so an L2 task
+  // carrying a single E3 self-report reached done - the standard promised an E1/E2 floor and the
+  // runtime did not implement it. A specification the code does not enforce is the exact failure
+  // this project exists to remove, so the floor is a table rather than a sentence.
+  const EVIDENCE_FLOOR = { L1: ['E1', 'E2', 'E3', 'E4'], L2: ['E1', 'E2'], L3: ['E1'] };
+  if (task.phase === 'evidence' && task.evidence.length === 0) {
     throw new Error(
-      `Task ${id} is ${task.rigor}: reaching done requires at least one graded evidence record (see references/verification-standard.md).`,
+      `Task ${id} is ${task.rigor}: reaching done requires at least one graded evidence record ` +
+        '(see references/verification-standard.md).',
     );
+  }
+  if (task.phase === 'evidence') {
+    const floor = EVIDENCE_FLOOR[task.rigor];
+    if (floor && !task.evidence.some((e) => floor.includes(e.grade))) {
+      const got = [...new Set(task.evidence.map((e) => e.grade))].join(', ');
+      throw new Error(
+        `Task ${id} is ${task.rigor}: reaching done requires ${floor.join(' or ')} evidence, and the ` +
+          `record holds only ${got}. A self-report is not verification at this level.`,
+      );
+    }
   }
   if (task.phase === 'evidence' && task.rigor === 'L3') {
     if (!task.evidence.some((e) => e.grade === 'E1')) {
@@ -687,8 +707,9 @@ export function completeStage(state, id, agent, result = {}) {
   if (nextStep.phase !== 'done' && !nextStep.agent) {
     if (nextStep.phase === 'domain_review') {
       throw new Error(
-        `Task ${id} is ${task.rigor} and needs a domain review, but every eligible agent either ` +
-          'implemented or verified it. Add an agent to the roster that took no part in the work.',
+        `Task ${id} is ${task.rigor} and needs a domain review, but no eligible agent is both a ` +
+          'third party AND scored for the "domain" role. Give an agent who took no part in the work ' +
+          'a domain score of 1 or more, or record the review explicitly.',
       );
     }
     throw new Error(`No agent in the roster can own the ${nextStep.phase} stage`);
@@ -882,24 +903,30 @@ export function nextDispatch(state, id) {
       `Task ${id} is gated: verification failed and no override is recorded, so it cannot be dispatched to evidence`,
     );
   }
-  // The approval gate has to gate the thing it names. This used to report `approved: false` and
-  // still hand back a runnable argv, so a host adapter that actually executed the command would
-  // have bypassed the approval entirely.
-  if (task.externalAction && !task.externalAction.approved) {
+  // The approval gate has to gate the thing it names, and ONLY that thing. Blocking every dispatch of
+  // a task that carries an external action would stop specify/implement/verify too, which is not what
+  // the protocol says: internal work may proceed, the external STEP needs approval. The step is
+  // declared once (externalAction.at, default "implement").
+  const externalAt = task.externalAction?.at ?? 'implement';
+  const atExternalStep = task.externalAction && task.phase === externalAt;
+  if (atExternalStep && !task.externalAction.approved) {
     throw new Error(
-      `Task ${id} carries an external action (${task.externalAction.kind}) that is not approved. ` +
-        `Record one with: approve --task ${id} --by <who> --scope <what>`,
+      `Task ${id} reaches its external action (${task.externalAction.kind}) in the ${externalAt} stage and ` +
+        `it is not approved. Internal stages may continue; record one with: ` +
+        `approve --task ${id} --by <who> --scope <target>`,
     );
   }
-  // The scope is a constraint, not a note: an approval for "staging" must not unlock a production
-  // deployment. The scope has to name the action's target when one is declared, otherwise its kind.
-  if (task.externalAction?.approved) {
-    const scope = String(task.externalAction.scope ?? '').trim().toLowerCase();
-    const required = String(task.externalAction.target ?? task.externalAction.kind ?? '').trim().toLowerCase();
-    if (required && scope && !scope.includes(required)) {
+  // The scope is a constraint, not a note, and it is matched STRUCTURALLY: the approval has to name
+  // the action's target (or its kind) exactly. A substring test let "not production" unlock
+  // production, which is the classic way an authorization check becomes decoration.
+  if (atExternalStep && task.externalAction.approved) {
+    const normalise = (v) => String(v ?? '').trim().toLowerCase();
+    const scope = normalise(task.externalAction.scope);
+    const required = normalise(task.externalAction.target ?? task.externalAction.kind);
+    if (!scope || !required || scope !== required) {
       throw new Error(
-        `Task ${id}: the approval scope ("${task.externalAction.scope}") does not cover ` +
-          `"${task.externalAction.target ?? task.externalAction.kind}". Approve the action you are about to run.`,
+        `Task ${id}: the approval scope must equal the action's target exactly. Got "${task.externalAction.scope}", ` +
+          `the action targets "${task.externalAction.target ?? task.externalAction.kind}".`,
       );
     }
   }

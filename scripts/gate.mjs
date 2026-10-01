@@ -72,9 +72,9 @@ step('json', 'JSON examples and the manifest schema parse', () =>
   node(['-e', "JSON.parse(require('fs').readFileSync('examples/important-task.json','utf8'));JSON.parse(require('fs').readFileSync('references/agent-manifest.schema.json','utf8'));console.log('JSON OK')"]),
   'exit 0');
 
-step('frontmatter', 'SKILL.md declares name and description', () =>
-  node(['-e', 'const t=require("fs").readFileSync("SKILL.md","utf8");if(!/^---\\n[\\s\\S]*?name:\\s*\\S+[\\s\\S]*?description:\\s*\\S+[\\s\\S]*?\\n---/.test(t))throw new Error("invalid frontmatter");console.log("frontmatter OK")']),
-  'exit 0: parseable frontmatter with name + description');
+step('frontmatter', 'SKILL.md frontmatter is PARSED, not pattern-matched', () =>
+  node(['scripts/check-frontmatter.mjs', 'SKILL.md']),
+  'exit 0: the frontmatter parses as YAML, so a description written as a plain scalar containing ": " is rejected');
 
 step('activation', 'activation engages on intent and stays silent on lookalikes', () =>
   node(['--test', 'scripts/acceptance.test.mjs']),
@@ -174,6 +174,22 @@ step('benchmark', 'the protocol still stops every failure mode the README claims
   return { status: 0, durationMs: 0, out: rows.length + ' failure modes, protocol column all zero', err: '' };
 }, 'exit 0: every failure mode is stopped by the engine');
 
+step('line-endings', 'shell scripts ship with LF, so they run where they are unpacked', () => {
+  // An independent reviewer unpacked the published ZIP and ran `bash -n scripts/install.sh`, which
+  // failed with "syntax error near unexpected token `\$'in\r'". .gitattributes normalises on
+  // checkout, but the ZIP is built from the working tree, so the shipping artifact has to be checked
+  // rather than assumed.
+  const problems = [];
+  for (const file of ['scripts/install.sh', 'scripts/install.ps1']) {
+    const bytes = readFileSync(join(ROOT, file));
+    const crlf = (bytes.toString('utf8').match(/\r\n/g) || []).length;
+    if (crlf > 0) problems.push(file + ': ' + crlf + ' CRLF line endings');
+  }
+  return problems.length
+    ? { status: 1, durationMs: 0, out: '', err: problems.join('\n') }
+    : { status: 0, durationMs: 0, out: 'installers are LF-clean', err: '' };
+}, 'exit 0: no CRLF in the shell scripts that ship in the ZIP');
+
 step('config-usage', 'no config key pretends to be behaviour the engine does not have', () => {
   const r = node(['scripts/check-config-usage.mjs']);
   return r.status === 0
@@ -266,6 +282,10 @@ function selfTest() {
     { name: 'the activation anchors are emptied', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace(/agent_anchors: \[[^\]]*\]/, 'agent_anchors: []'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    // The bug an independent reviewer found on GitHub: the gate's regex was happy while YAML was not.
+    { name: 'the description becomes a plain scalar containing a colon (the GitHub YAML error)', target: 'MUTATED-SKILL.md', file: 'SKILL.md',
+      mutate: (t) => t.replace('description: >-', 'description: Use when several agents coordinate: the rules are enforced'),
+      command: (dir) => [process.execPath, [join(ROOT, 'scripts/check-frontmatter.mjs'), join(dir, 'MUTATED-SKILL.md')]] },
     { name: 'the handoff record loses its next step', fixtureDir: 'examples/handoff', target: 'CURRENT-TASK.md', file: 'examples/handoff/CURRENT-TASK.md',
       mutate: (t) => t.replace(/下一步:[^\n]*\r?\n?/, ''),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/check-handoff.mjs'), '--dir', dir]] },

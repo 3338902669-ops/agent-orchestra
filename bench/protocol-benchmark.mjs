@@ -136,9 +136,14 @@ const SCENARIOS = [
     orchestra(world) {
       const t = createTask(createState(), { title: 'deploy', type: 'build', rigor: 'L3', externalAction: 'deploy',
         externalTarget: 'production', executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
-      try { nextDispatch(t.state, t.task.id); world.unapproved = 1; }
+      // The approval gates the external STEP (externalAction.at, default implement), so the task has to
+      // reach that stage before the attempt means anything. Internal stages are allowed through.
+      let s = claimTask(t.state, t.task.id, t.task.assignedAgent).state;
+      s = completeStage(s, t.task.id, t.task.assignedAgent, { spec: 'ship it', acceptance: 'it is live' }).state;
+      try { nextDispatch(s, t.task.id); world.unapproved = 1; }
       catch (e) { world.unapproved = 0; world.refusals.push(e.message); }
-      const wrong = approveExternalAction(t.state, t.task.id, { approvedBy: 'ops', scope: 'staging only' }).state;
+      // An approval naming somewhere else must not unlock it, and a substring must not either.
+      const wrong = approveExternalAction(s, t.task.id, { approvedBy: 'ops', scope: 'staging' }).state;
       try { nextDispatch(wrong, t.task.id); world.wrongScopeAllowed = 1; }
       catch (e) { world.wrongScopeAllowed = 0; world.refusals.push(e.message); }
     },
