@@ -4,6 +4,16 @@
 
 ---
 
+## 零、v2.4.0 新增（宣传时可引用的实质变化）
+
+- **启用判断不再靠关键词**：`exit 0` 只在「命中精选词组 + 句中有协调动作 + 无比较/评测/疑问标记」时给出；拿不准的句子返回 `exit 3`（交给调用方判），纯比较返回 `exit 1`。**含比较标记的句子永不自动启用。** 78 条正反用例，其中包含多轮独立核验方贡献的真实口语与对抗样本。
+- **有据可查的检验标准**：`references/verification-standard.md` 从 IEEE 1012、ISO/IEC/IEEE 29119、DO-178C/DO-330、NIST SSDF、ISO 19011 提炼出 R1–R10，每条写明**由哪个检查强制**，而不是写进文档就算数。
+- **严格度分级 L1/L2/L3**：L2/L3 到 done 必须有分级证据；L3 必须 E1，且**验证者不得是该任务的证据作者**；外部动作永远不能填 L1。
+- **门禁会自证能失败**：`scripts/gate.mjs` 在报 PASS 之前注入 **10 个已知故障并要求全部被拒**；证据绑定 git revision 与产物 SHA-256。CI 与本机跑**同一条命令**。
+- **交接记录可校验**：`scripts/check-handoff.mjs` 检查四件套、活条目五字段、状态词表，以及**肯定式**的「记录优先于队列」声明（否定式会被拒）。
+
+---
+
 ## 一、一句话定位（中英）
 
 EN: Coordinate 3+ AI agents with capability-based routing, single-writer ownership, independent verification, and token-efficient workflows.

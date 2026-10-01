@@ -21,6 +21,17 @@ Create one shared directory per project (referred to here as `<shared-dir>`), ou
 
 An optional fifth file is the machine-readable queue (`TASK-QUEUE.json`, see `references/task-queue.md`). It is a scheduler, not a record.
 
+The record is checkable rather than merely described:
+
+```bash
+node scripts/check-handoff.mjs --dir <shared-dir>
+```
+
+It requires all four files, a live entry carrying **status, owner, current step, next step and evidence**,
+a recognised status value (`进行中` / `等待接续` / `已完成` or the English equivalents), and a **positive**
+statement that the record outranks the queue - a negated one ("the record does **not** outrank the queue")
+is refused, because it says the opposite while containing the same words.
+
 Rules for the record itself:
 
 - **Keep the live entry short.** Conclusions and state only - owner, status, step, next step, evidence pointers - under roughly 200 lines. Process chat and reasoning stay in the working agent's own session.

@@ -128,6 +128,11 @@ Adding an agent is a **data edit, not a code change**:
 
 ## 5. Verifier != implementer (hard constraint)
 
+How much independence is required is set by **rigor**, which the task states and the engine stores
+(see `references/verification-standard.md`): L1 may be self-checked; **L2 must be verified by a different
+agent**; **L3 must be verified by an agent that took no part in the work at all** - producing evidence on
+the task counts as taking part - and L3 cannot reach `done` without E1 evidence.
+
 An agent that wrote the implementation cannot certify it. Its self-check is graded E3, never a verification result (see `references/evidence-grading.md`).
 
 ### 5.1 Choosing the verifier

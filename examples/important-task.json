@@ -1,7 +1,9 @@
 {
   "task_id": "task-0001",
   "risk": "important",
+  "rigor": "L2",
   "objective": "Replace with a concrete user objective",
+  "spec": "What is being built, in one or two sentences. The engine refuses to leave the specify stage without this (and acceptance).",
   "scope": ["src/"],
   "non_goals": ["deploy", "change unrelated behavior"],
   "baseline": { "revision": "git-sha-or-file-hash" },
@@ -10,7 +12,8 @@
     "security_scan": "planned",
     "independent_verification": "planned",
     "confirmed_by_user": false,
-    "confirmed_at": null
+    "confirmed_at": null,
+    "start_choices_source": "stated"
   },
   "roles": { "coordinator": "agent-a", "implementer": "agent-b", "verifier": "agent-c" },
   "verifier_is_implementer": false,
@@ -44,5 +47,10 @@
     "override": null
   },
   "state": "specified",
-  "external_actions": { "approved": false, "scope": null, "approved_by": null }
+  "external_actions": { "approved": false, "scope": null, "approved_by": null },
+  "_notes": {
+    "rigor": "L1 local | L2 shared (default) | L3 consequential. L2 and L3 require a graded evidence record before done; L3 additionally requires E1 evidence and a verifier that produced none of it. An external action can never be L1.",
+    "start_choices_source": "stated = all three choices were answered; defaults = they were assumed, which the CLI says out loud on stderr. A task with an external action must always be 'stated'.",
+    "spec": "The engine reads task.spec and task.acceptance; this example is the same packet in document form."
+  }
 }

@@ -2,6 +2,61 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.4.0] - 2026-10-01
+
+### Changed
+- **Activation is a conservative three-valued filter, not a keyword list.** `exit 0` (engage) requires a
+  curated, self-anchored keyword phrase, an act of coordinating in the sentence, and no comparison,
+  evaluation or question marker. Everything else that looks like coordination returns `exit 3`
+  (POSSIBLE) and the caller decides; a plain comparison returns `exit 1`. Because a pattern can no
+  longer engage on its own, an unlisted synonym cannot produce a wrong engage either - it downgrades
+  at worst. Thirteen adversarial verification rounds produced 78 cases (4 engage / 53 surface /
+  21 silent), every one now permanent in `scripts/activation-cases.json`.
+
+### Added
+- `references/verification-standard.md`: ten requirements distilled from IEEE 1012, ISO/IEC/IEEE 29119,
+  DO-178C/DO-330, NIST SSDF and ISO 19011, each naming the check that enforces it, plus rigor levels
+  L1-L3, an independence matrix and an honest statement of the limits.
+- `scripts/gate.mjs`: one command that CI and a local machine both run, so the checks cannot drift.
+  Evidence lands in `evidence/latest.json` bound to the git revision and the SHA-256 of key artifacts,
+  every step carries its exit criterion, and the runner **injects ten known faults that it must
+  reject** before reporting PASS. A gate that has never been observed to fail is not evidence.
+- `KNOWN-FINDINGS.md`: accepted defects with severity, owner, disposition and a review date; the gate
+  refuses an expired waiver or a finding without an owner.
+- `scripts/check-handoff.mjs` and eight tests: the handoff record is checked rather than described -
+  four files, a live entry carrying status/owner/current step/next step/evidence, a recognised status
+  value, and a positive precedence claim.
+- Rigor levels as engine state: `create --rigor L1|L2|L3`. L2 and L3 cannot reach `done` without a
+  graded evidence record, L3 additionally requires E1 evidence and a verifier that produced none of
+  it, and an external action can never be filed as L1.
+- Evidence grading is enforced: a bare string is stored as E3 with a note, and `--evidence-grade E1`
+  is refused unless it carries `--evidence-command`, `--evidence-exit-code` and `--evidence-revision`.
+- The task packet is real state (`--spec`, `--acceptance`, `--non-goals`); the specify stage cannot
+  end without the first two.
+- `scripts/activation-cases.json`: one case table shared by the acceptance test and the verifier's
+  evidence collector, so the two cannot drift apart.
+- `references/zh-contrast.md`: the Chinese one-line summaries moved out of SKILL.md, cutting 732
+  characters (3.7%) from what is always loaded.
+
+### Fixed
+- **A shipped config that the engine rejects.** `intake_gate` documented `security_scan: [yes, no]`
+  while the engine only accepts `planned | skip`. The validator now imports the engine's enums and
+  compares every value instead of checking that some text appeared somewhere.
+- **The self-test could pass for the wrong reason.** A mutation wrote its result to one file while the
+  check read another, so it was rejected because a directory was empty rather than because the change
+  was detected. Every mutation now declares the file it mutates and is refused if that file is absent.
+- **A negated precedence claim satisfied the handoff check** (`不优先于` matched a substring test for
+  `优先于`); only a positive assertion counts now.
+- Documents are checked against reality: the changelog and the gate's own criterion string both
+  claimed 65 tests while the suites held more. A `claims` step now compares stated test counts with
+  the suites.
+- Concurrent queue writes lost work: the queue is written through a temp file plus `rename()`, every
+  command holds an exclusive `<queue>.lock` across read-modify-write, and a stale lock is taken over.
+
+### Tests
+- 76 engine tests, 8 acceptance tests, 8 handoff tests, 78 activation cases; a 10-step gate with ten
+  injected faults.
+
 ## [2.3.0] - 2026-10-01
 
 ### Added

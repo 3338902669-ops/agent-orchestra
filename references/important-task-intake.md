@@ -57,6 +57,13 @@ Rules:
 - The queue **refuses to create** an important task that omits any of the three choices. An unknown or misspelled value is also refused. A rejected creation is a non-zero exit, never a silent default.
 - The recorded choices travel with the task and into every dispatch prompt, together with the constraint that a planned scan must not be started without a further confirmation.
 - A task whose recorded mode contradicts the run (for example, `collaborative` recorded but one agent did everything) is a coordination defect: stop and reconcile before continuing.
+- **A task with an external action always states all three.** `create --external-action <kind>` without
+  `--execution-mode`, `--security` and `--independent-verify` is refused, because "nobody asked" must
+  never mean "no scan, no independent verification" for something that leaves the machine.
+- **Routine tasks may take the defaults, but the record says so.** They carry
+  `startChoicesSource: 'defaults'` (versus `'stated'`) and the CLI prints
+  `start choices assumed (single / skip / skip)` on stderr, so an assumed answer is never mistaken for
+  a stated one.
 
 ## 5. What the gate does not authorize
 

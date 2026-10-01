@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta property="og:title" content="Multi-Agent Orchestration Skill">
-<meta property="og:description" content="Coordinate 3+ AI agents with capability-based routing, single-writer ownership, independent verification, and token-efficient workflows.">
+<title>Agent Orchestra — one protocol for multi-agent work</title>
+<meta name="description" content="Coordinate three or more AI agents: capability-scored roles, single-writer locks, a verification gate no task can skip, graded evidence, and a handoff record that survives a change of session or tool.">
+<meta property="og:title" content="Agent Orchestra — one protocol for multi-agent work">
+<meta property="og:description" content="Capability-scored roles, single-writer ownership, a verification gate run by an agent from your own team, graded evidence, and a checkable handoff record.">
 <meta property="og:image" content="https://3338902669-ops.github.io/agent-orchestra/og-image.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://3338902669-ops.github.io/agent-orchestra/og-image.png">
-<title>Multi-Agent Orchestration Skill</title>
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}
@@ -21,6 +22,48 @@ h1{font-size:2.2rem;margin:0 0 8px;letter-spacing:-0.02em}
 .card h2{margin:0 0 10px;font-size:1.15rem;color:#58a6ff}
 ul{margin:8px 0;padding-left:22px}
 li{margin:5px 0}
-.badge{display:inline-block;background:#1f6feb33;color:#58a6ff;border:1px solid #1f6feb66;border-radius:20px;padding:2px 12px;font-size:0.8rem;margin:2px 4px 2px 0}
+.badge{display:inline-block;background:#1f6feb33;color:#58a6ff;border:1px solid #1f6feb66;border-radius:20px;padding:2px 12px;font-size:.8rem;margin:2px 4px 2px 0}
 .btn{display:inline-block;background:#238636;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;margin:8px 8px 0 0}
 .btn.gh{background:#1f6feb}
+code{background:#21262d;padding:2px 6px;border-radius:6px;font-size:.9em}
+a{color:#58a6ff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent Orchestra</h1>
+  <p class="tag">One protocol for multi-agent work: who does what, who may write, who verifies, and what counts as done.</p>
+  <p>
+    <span class="badge">3+ agents, any names</span>
+    <span class="badge">zero dependencies</span>
+    <span class="badge">Node 18+</span>
+    <span class="badge">MIT</span>
+  </p>
+  <a class="btn" href="https://github.com/3338902669-ops/agent-orchestra">View on GitHub</a>
+  <a class="btn gh" href="https://github.com/3338902669-ops/agent-orchestra#install">Install</a>
+
+  <div class="card">
+    <h2>What it settles</h2>
+    <ul>
+      <li><strong>Who does what.</strong> Roles are assigned from a capability-scored roster you declare - three agents work, so do twelve, and the names are yours.</li>
+      <li><strong>One writer per resource.</strong> A task can only be claimed by its owner; a second writer is refused rather than merged by accident.</li>
+      <li><strong>A gate no task can skip.</strong> Completion needs a verification PASS from an agent that is not the implementer; a human override costs an approver, a scope and a reason, and the failure stays on the record.</li>
+      <li><strong>Evidence with a grade.</strong> E1 means someone else can re-run it; a bare sentence is stored as E3 and labelled, so self-report cannot pose as proof.</li>
+      <li><strong>Rigor that decides the work.</strong> L1 local, L2 shared, L3 consequential - L2 and L3 cannot finish without graded evidence, and L3 additionally requires E1 and a verifier that produced none of it.</li>
+      <li><strong>A handoff that survives.</strong> Four shared files carry status, owner, next step and evidence, and <code>check-handoff</code> verifies the record before a successor trusts it.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Checks you can re-run</h2>
+    <ul>
+      <li><code>node scripts/gate.mjs</code> - one command for CI and your machine: config truth, activation behaviour, the engine, the CLI gate, the handoff record, doc claims. It injects ten known faults and must reject every one before it reports PASS.</li>
+      <li><code>node scripts/check-handoff.mjs --dir &lt;shared-dir&gt;</code> - the handoff record, checked rather than described.</li>
+      <li><code>node scripts/detect-trigger.mjs --text "&lt;request&gt;"</code> - three-valued activation: <code>0</code> engage, <code>3</code> ambiguous (you decide), <code>1</code> stay silent.</li>
+    </ul>
+  </div>
+
+  <p class="tag">Open source, MIT licensed. It cannot promise infallibility, and it never replaces your authorization for irreversible actions.</p>
+</div>
+</body>
+</html>
