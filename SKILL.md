@@ -1,15 +1,22 @@
 ---
 name: multi-agent-orchestration
-description: Use when three or more AI agents are available and a task needs coordinated execution, role assignment, independent verification, risk controls, or lower token/API cost. Activation is configurable: global, keyword-triggered, or manual.
+description: Use when three or more AI agents are available and a task needs coordinated execution, capability-based role assignment, single-writer ownership, independent verification, evidence-graded completion, deterministic dispatch, or lower token/API cost. Ships a task-queue CLI, an important-task intake gate, and a coordination anti-pattern guide. Activation is configurable: global, keyword-triggered, or manual.
 ---
 
 # Multi-Agent Orchestration
 
-A capability-first coordination protocol with explicit ownership, evidence, stop conditions, and token-aware routing. It reduces error risk but cannot promise absolute infallibility.
+A capability-first coordination protocol: explicit ownership, graded evidence, deterministic dispatch, stop conditions, and token-aware routing. It makes coordination failures visible and recoverable. It cannot promise absolute infallibility, and it never replaces user authorization.
+
+**Two companion skills ship together in this repository.** If your host supports one skill per folder, install the folder that matches your need:
+
+| Folder | Use it for |
+|---|---|
+| `. (repository root)` | Orchestrating three or more agents: role routing, ownership, verification, queue, cost control |
+| `agent-team-handoff/` | Cross-session / cross-tool handoff discipline: shared task record, five handoff rules, single-writer boundaries |
 
 ## Activation (when to use this skill)
 
-Configure in config/agents.example.yaml under `activation:`.
+Configure in `config/agents.example.yaml` under `activation:`.
 
 | mode | behavior | token cost |
 |---|---|---|
@@ -17,64 +24,117 @@ Configure in config/agents.example.yaml under `activation:`.
 | keyword | engages only when task text matches keywords | default; low |
 | manual | engages only when the user explicitly invokes it | lowest |
 
-Decide engagement before starting any work:
+1. Read the activation block from `config/agents.example.yaml`.
+2. global -> engage. manual -> engage only when the user asked for multi-agent orchestration.
+3. keyword -> run `node scripts/detect-trigger.mjs --text "<task text>" --config config/agents.example.yaml`.
+   Exit code 0 (ENGAGED) means use this skill; 1 (NOT_ENGAGED) means do not. Exclude keywords veto engagement.
 
-1. Read the activation block from config/agents.example.yaml.
-2. If mode is global -> engage.
-3. If mode is manual -> engage only when the user explicitly asked for multi-agent orchestration.
-4. If mode is keyword -> run:
+## Five non-negotiables
 
-    node scripts/detect-trigger.mjs --text "<task text>" --config config/agents.example.yaml
+1. **One primary writer per file or resource.** Everyone else is read-only or writes isolated artifacts until a recorded handoff promotes them.
+2. **Verifier != implementer.** An agent that wrote the implementation cannot certify it. Its self-check is E3, not a verification result.
+3. **No completion claim without criterion-linked evidence.** "I checked" is not evidence. See `references/evidence-grading.md`.
+4. **Irreversible actions need separate, explicit user approval.** Deploy, publish, send, upload, delete, account changes: approval must be recorded (`orchestrator.mjs approve`). *Verification passing does not equal authorization to ship.*
+5. **The human-readable handoff record outranks the queue.** If the queue state and the shared task record disagree, stop and follow the record; the queue is a scheduler, not the authority on intent.
 
-   Exit code 0 (ENGAGED) means use this skill; exit code 1 (NOT_ENGAGED) means do not use it.
-   Exclude keywords act as a veto even when a trigger keyword matched.
+## Important-task intake gate
 
-## Fast Path
+Before the **first write, first dispatch, or first verification** of an important task, ask the user and record three choices — never default them:
 
-1. Discover each agent's tools, model, workspace, permissions, specialties, cost tier, and availability.
-2. Map capabilities to roles; never infer from names alone.
-3. Classify the task as routine, important, or critical using user configuration.
-4. Create a compact task packet: objective, non-goals, ownership, risks, and acceptance tests.
-5. Enforce one primary writer per file or resource.
-6. For important work use specify -> implement -> verify -> accept.
-7. For critical work add domain review and human approval for external or irreversible actions.
-8. Stop on failed gates, ownership conflicts, missing evidence, or unapproved external actions.
+1. Execute solo, or start collaborative mode?
+2. Run the security scan, or skip it?
+3. Run an independent verification pass, or skip it?
+
+"Important" includes at least: multi-file or architectural change, user-facing/product delivery, production/outreach/publish/deploy, data migration or deletion, permission/credential/security change, costly scanning, cross-agent collaboration, or any task the user calls high-quality/fully verified. When the boundary is unclear, treat it as important.
+
+The gate decides *how* work is coordinated. It does **not** authorize irreversible actions.
+
+See `references/important-task-intake.md`.
+
+## Fast path
+
+1. Inventory each agent's tools, model, workspace, permissions, specialties, cost tier, and availability.
+2. Score capabilities against roles; never infer a role from an agent's name.
+3. Classify the task: routine / important / critical.
+4. Write a compact task packet: objective, non-goals, ownership, risks, acceptance tests, owner, verifier.
+5. Take the ownership lock before editing.
+6. Run the pipeline: `specify -> implement -> verify -> accept` (important adds an independent verifier; critical adds domain review + approval).
+7. Stop on failed gates, ownership conflicts, missing evidence, or unapproved external actions.
 
 ## Roles
 
-Coordinator decomposes work, maintains state, resolves conflicts, and accepts evidence. Implementer edits assigned resources. Verifier independently tests behavior and regressions. Environment specialist diagnoses runtime, MCP, build, and toolchain problems. Domain reviewer checks UX, content, security, legal, or other domain criteria.
+| Role | Owns |
+|---|---|
+| Coordinator | decomposition, state, conflict resolution, accepting evidence |
+| Implementation worker | edits assigned resources only |
+| Verification worker | independent reproduction, boundary and regression checks (must not be the implementer) |
+| Environment specialist | runtime, MCP, build, toolchain diagnosis |
+| Domain reviewer | UX, content, security, legal or other domain criteria |
 
-One agent may hold multiple roles for routine work only. Important work requires an independent verifier.
+One agent may hold several roles on **routine** work only. Important work requires an independent verifier; critical work adds a domain reviewer and human approval.
 
-## Token Policy
+See `references/roles.md` and `references/routing-and-roles.md`.
 
-Load only the reference section needed. Use one coordinator summary instead of full transcripts. Send bounded structured packets. Parallelize independent read-only checks; serialize dependent work and writes. Use cheap models for discovery and mechanical checks; reserve strong models for ambiguity, architecture, adversarial review, and acceptance. Never compress requirements, code, paths, URLs, hashes, errors, permissions, or evidence.
+## Pipeline and queue
 
-See references/token-efficiency.md.
+Stage machine: `specify -> implement -> verify -> evidence -> done`, plus `blocked` and `recovery`.
 
-## Completion Gate
+```bash
+node scripts/orchestrator/orchestrator.mjs create --title "Fix checkout" --type build --workspace "<workspace>"
+node scripts/orchestrator/orchestrator.mjs claim  --task task-0001 --agent implementer-a
+node scripts/orchestrator/orchestrator.mjs dispatch --task task-0001   # dry-run command only
+node scripts/orchestrator/orchestrator.mjs approve --task task-0002 --by user --scope "deploy to production"
+```
 
-Do not claim done, verified, or deployed without criterion-linked evidence. User-facing work should test actual runtime, target environments, core interactions, errors, keyboard/accessibility where relevant, resource loading, and fallback or reduced-motion behavior where relevant. A failed gate returns the task to its responsible stage.
+- `dispatch` prints the command to run. It never launches an agent.
+- A non-dispatchable task (blocked, no assignee, no command) fails with a non-zero exit code. Exit 0 must never disguise an undispatchable task.
+- `approve` is the only path for external actions, and it is per task and per scope.
 
-See references/protocol.md, references/roles.md, and config/agents.example.yaml.
+See `references/task-queue.md` and `scripts/orchestrator/README.md`.
 
+## Evidence grading
 
-## 协同调度防翻车指南（八大坑与工程化解法）
+| Grade | Meaning | Allowed wording |
+|---|---|---|
+| E1 reproducible | command output, exit code, hash, screenshot, URL response | "verified: <command> exited 0, output ..." |
+| E2 same-system peer check | another agent re-ran it and gave reproduction steps | "peer-reviewed by <agent> (steps attached)" |
+| E3 self-assertion | the author says it looks fine | "self-checked, not independently verified: ..." |
+| E4 planned | not executed yet | "planned verification: ..." |
 
-> 多个 Agent 并行推进时的典型翻车点，组建团队前逐条对照。
+Never let E3 speak in E1's voice. After context compaction or session resume, re-verify before restating an old "verified".
 
-| # | 坑 | 症状 | 工程化解法 |
+## Token and cost policy
+
+Load only the reference section you need. One coordinator summary instead of full transcripts. Bounded structured packets. Parallelize read-only checks; serialize dependent work and writes. Cheap models for discovery and mechanical checks; strong models for ambiguity, architecture, adversarial review, and acceptance. Never compress requirements, code, paths, URLs, hashes, errors, permissions, or evidence.
+
+See `references/token-efficiency.md`.
+
+## Completion gate
+
+Do not claim done, verified, or deployed without criterion-linked evidence. User-facing work should test the actual runtime, target environments, core interactions, errors, keyboard/accessibility where relevant, resource loading, and reduced-motion/fallback behaviour. A failed gate returns the task to its responsible stage. A passed gate is not a shipping authorization.
+
+## Stop conditions
+
+Ownership conflict; unrecoverable baseline; material ambiguity; release-blocking finding; missing evidence; a request for secrets; an external action without recorded approval; a verifier that was also the implementer.
+
+## Anti-patterns (read before forming a team)
+
+| # | Pitfall | Symptom | Engineering fix |
 |---|---|---|---|
-| 1 | 上下文爆炸 | 共享对话越滚越长，早期约束和验收标准被挤出窗口 | 交接单只存结论与状态（≤200行）；过程性讨论留本地；每批次由总控重发「最小必要上下文」 |
-| 2 | 幻觉传染 | 一个成员输出错误信息，经共享记忆被全员当事实扩散 | 共享记忆分区：写入需总控标「已验证」才可见；未验证内容进隔离区并标注来源与置信度 |
-| 3 | 协作死锁 | A 等 B、B 等 C、C 又等 A，系统永久挂起 | 资源/产出申请按全局固定顺序排队；每个等待带超时（默认15分钟），超时升级总控裁决 |
-| 4 | 状态不一致 | 两人手里的任务状态对不上，重复做或漏做 | 唯一事实源=任务看板状态机；改状态即写盘；口头状态不作数 |
-| 5 | 通信风暴 | 成员互相直聊，消息链路随人数平方膨胀 | 星型拓扑：只允许「成员↔总控」通信，禁止成员互发；协作由总控转交 |
-| 6 | Agent 蔓延 | 按功能细分拆太多角色，边界重叠没人负全责 | 减法原则：新角色先回答「能否并入现有闭环」；每个角色端到端负责一段可交付物 |
-| 7 | 调度靠 LLM 临场发挥 | 同一输入两次派发结果不同，忽快忽慢还漏派 | 派发确定性化：看板扫描+固定规则（标签/负载/顺序）；LLM 只做规划不做机械分发 |
-| 8 | 无验收聚合 | 各自交付没人拼装校验，缺陷集成时才爆 | 总控独立验收门禁：对照验收标准逐条核验+运行证据；不合格整批退回 |
+| 1 | Context explosion | shared transcript grows until early constraints and acceptance criteria fall out of the window | the shared record stores conclusions and state only (<=200 lines); process chat stays local; the coordinator re-sends the minimal necessary context each batch |
+| 2 | Hallucination contagion | one member's wrong output spreads as fact through shared memory | partition shared memory: entries become visible only after the coordinator marks them verified; unverified content stays quarantined with source and confidence |
+| 3 | Coordination deadlock | A waits for B, B for C, C for A; the system hangs forever | queue resource/artifact requests in a globally fixed order; every wait carries a timeout (default 15 min) that escalates to the coordinator |
+| 4 | State divergence | two members disagree about task state; work is repeated or dropped | single source of truth = the task-record state machine; state changes are written to disk; verbal/session state does not count |
+| 5 | Communication storm | members message each other; links grow quadratically with headcount | hub-and-spoke: members talk to the coordinator only; coordination is relayed |
+| 6 | Agent sprawl | roles are split until boundaries overlap and nobody owns the outcome | subtraction first: a new role must justify why it cannot fold into an existing loop; every role owns an end-to-end deliverable |
+| 7 | Dispatch left to LLM improvisation | the same input routes differently twice; work is slow or skipped | make dispatch deterministic: board scan + fixed rules (tags/load/order); the LLM plans, it does not mechanically distribute |
+| 8 | No acceptance aggregation | each member delivers, nobody assembles and checks; defects surface at integration | the coordinator runs an independent acceptance gate against every criterion with runtime evidence; failing batches are returned whole |
 
-### 硬性红线
-- 禁止两成员同时写同一文件；禁止跳过看板直接开工/交付；
-- 禁止把「我认为完成了」当完成——必须附运行证据；
-- 禁止成员间私相授受任务（一切派发过总控）。
+### Hard red lines
+
+- Never let two members write the same file at the same time.
+- Never start work or deliver outside the shared record / queue.
+- Never treat "I think it is done" as done — runtime evidence is required.
+- Never let members hand tasks to each other privately; all dispatch flows through the coordinator.
+
+See `references/anti-patterns.md`, `references/protocol.md`, and `config/agents.example.yaml`.

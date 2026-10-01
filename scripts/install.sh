@@ -12,7 +12,8 @@ while getopts "t:f" opt; do
 done
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -z "$TARGET" ]; then
-  for c in "$HOME/.claude/skills" "$HOME/.agents/skills" "$HOME/.dsh/skills"; do
+  # Set AGENT_SKILLS_DIR for your host, or pass -t explicitly.
+  for c in "$AGENT_SKILLS_DIR" "$HOME/.claude/skills" "$HOME/.agents/skills"; do
     if [ -d "$c" ]; then TARGET="$c/multi-agent-orchestration"; break; fi
   done
 fi

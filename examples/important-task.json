@@ -5,10 +5,33 @@
   "scope": ["src/"],
   "non_goals": ["deploy", "change unrelated behavior"],
   "baseline": { "revision": "git-sha-or-file-hash" },
+  "intake_gate": {
+    "execution_mode": "collaborative",
+    "security_scan": "planned",
+    "independent_verification": "planned",
+    "confirmed_by_user": false,
+    "confirmed_at": null
+  },
   "roles": { "coordinator": "agent-a", "implementer": "agent-b", "verifier": "agent-c" },
+  "verifier_is_implementer": false,
   "ownership": { "src/target.ts": "agent-b" },
   "acceptance": ["test command passes", "no unrelated files changed"],
-  "evidence": [],
+  "evidence": [
+    {
+      "criterion": "test command passes",
+      "grade": "E1",
+      "command": "npm test",
+      "exit_code": 0,
+      "output": "<paste the tail of the real output>"
+    },
+    {
+      "criterion": "no unrelated files changed",
+      "grade": "E1",
+      "command": "git status --short",
+      "exit_code": 0,
+      "output": "M src/target.ts"
+    }
+  ],
   "state": "specified",
-  "external_actions": { "approved": false }
+  "external_actions": { "approved": false, "scope": null, "approved_by": null }
 }

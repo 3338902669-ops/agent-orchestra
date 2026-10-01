@@ -1,0 +1,5 @@
+# Normalise every text file to LF so the skill behaves the same on every host.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.zip binary

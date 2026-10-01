@@ -1,4 +1,4 @@
-version: 1
+version: 2
 mode: capability-first
 minimum_agents_for_auto_routing: 3
 
@@ -19,11 +19,15 @@ activation:
     - coordinate agents
     - role assignment
     - single-writer
+    - single writer
     - token efficiency
     - token cost
     - important task
     - critical task
     - independent verification
+    - verifier
+    - task queue
+    - handoff
     - 多agent
     - 多 agent
     - 多个agent
@@ -35,6 +39,8 @@ activation:
     - 重要任务
     - 关键任务
     - 独立复核
+    - 独立核验
+    - 交接
     - 验收
     - 节省token
     - 省token
@@ -47,6 +53,18 @@ activation:
 state:
   path: .agent-work/state.json
   lock_path: .agent-work/locks
+
+# ---- Intake gate: ask before the first write/dispatch/verification of an important task ----
+# Never default these on the user's behalf. The gate decides HOW work is coordinated;
+# it does not authorize irreversible actions.
+intake_gate:
+  required_for: [important, critical]
+  questions:
+    - execution_mode: [single, collaborative]
+    - security_scan: [yes, no]
+    - independent_verification: [yes, no]
+  record_to: shared task record AND task.startChoices
+
 risk:
   default: routine
   important_triggers:
@@ -54,25 +72,55 @@ risk:
     - modifies_user_facing_behavior
     - touches_shared_configuration
     - external_action_requested
+    - multi_file_or_architecture_change
+    - cross_agent_collaboration
   critical_triggers:
     - production_or_irreversible_change
     - security_or_privacy_impact
     - financial_or_legal_impact
+    - data_migration_or_deletion
     - user_labels_task_critical
-  important_pipeline: [specify, implement, verify, accept]
-  critical_pipeline: [specify, implement, verify, domain_review, accept, approval]
+  important_pipeline: [specify, implement, verify, evidence, accept]
+  critical_pipeline: [specify, implement, verify, domain_review, evidence, accept, approval]
+
 roles:
   coordinator: { required: true, min_score: 1 }
   implementer: { required_for: [build, fix, migrate] }
-  verifier: { required_for: [important, critical], independent: true }
+  verifier: { required_for: [important, critical], independent: true }   # verifier != implementer, always
   environment_specialist: { required_for: [environment_failure] }
   domain_reviewer: { required_for: [critical] }
+
 ownership:
   one_primary_writer_per_resource: true
   reviewers_may_write_shared_resources: false
+  reviewers_may_write_isolated_artifacts: true
+  on_conflict: stop_and_prefer_task_record     # the human-readable handoff record outranks the queue
+
+# ---- Machine-readable queue (optional companion script) ----
+queue:
+  enabled: false
+  script: scripts/orchestrator/orchestrator.mjs
+  state_file: TASK-QUEUE.json
+  stages: [specify, triage, implement, verify, evidence, done]  # triage is inserted only for environment tasks
+  extra_states: [blocked, recovery]
+  dispatch_mode: dry_run        # print the command; never launch an agent
+  non_dispatchable_exit_code: 2 # never disguise an undispatchable task as exit 0
+  capabilities: [full, web, complex, verify, environment]
+
 approval:
-  external_actions: [deploy, publish, send, delete, production_change]
+  external_actions: [deploy, publish, send, upload, delete, production_change, account_change]
   require_explicit_user_confirmation: true
+  record_in: queue.approve        # task + scope, traceable to the user's confirmation
+  verification_does_not_authorize_shipping: true
+
+evidence:
+  grading: [E1_reproducible, E2_peer_check, E3_self_assertion, E4_planned]
+  require_grade_label: true
+  re_verify_after_context_compaction: true
+  forbidden_phrasings:
+    - treating a self-check as an independent verification
+    - restating an old "verified" without this round's evidence
+
 cost:
   default_tier: standard
   tiers: { micro: 2, standard: 4, high_assurance: 6 }

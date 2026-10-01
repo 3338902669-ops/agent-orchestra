@@ -6,14 +6,36 @@ on:
   pull_request:
 
 jobs:
-  validate-config:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
       - name: Validate orchestration config
         run: node scripts/validate-config.mjs config/agents.example.yaml
       - name: Check JSON examples parse
         run: node -e "JSON.parse(require('fs').readFileSync('examples/important-task.json','utf8')); JSON.parse(require('fs').readFileSync('references/agent-manifest.schema.json','utf8')); console.log('JSON OK')"
+      - name: Check SKILL.md frontmatter
+        run: node -e "const fs=require('fs');for(const p of ['SKILL.md','agent-team-handoff/SKILL.md']){const t=fs.readFileSync(p,'utf8');if(!/^---\n[\s\S]*?name:\s*\S+[\s\S]*?description:\s*\S+[\s\S]*?\n---/.test(t)){throw new Error('invalid frontmatter: '+p)}console.log('frontmatter OK: '+p)}"
+      - name: Keyword trigger detector smoke test
+        run: |
+          node scripts/detect-trigger.mjs --text "we need multi-agent orchestration" && echo "expected ENGAGED" || (echo "expected ENGAGED but got exit $?"; exit 1)
+          node scripts/detect-trigger.mjs --text "just a question" && (echo "expected NOT_ENGAGED"; exit 1) || echo "expected NOT_ENGAGED"
+      - name: Task queue tests
+        run: node --test scripts/orchestrator/lib.test.mjs
+      - name: Forbid private paths and secrets in shipped files
+        run: |
+          set -e
+          if grep -rInE 'C:\\Users|[A-Za-z]:\\Users|sk-[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY' SKILL.md README.md config references scripts examples agent-team-handoff; then
+            echo 'found a private path or a secret-looking string'; exit 1
+          fi
+          echo 'no private paths or secrets found'
+      - name: Forbid host-specific product and machine names
+        run: |
+          set -e
+          if grep -rInE 'tianshu|openclaw|rivet|aurevia|morphos|(^|[^a-z])dsh([^a-z]|$)' SKILL.md README.md config references scripts examples agent-team-handoff; then
+            echo 'found a host-specific product or machine name'; exit 1
+          fi
+          echo 'no host-specific product names found'

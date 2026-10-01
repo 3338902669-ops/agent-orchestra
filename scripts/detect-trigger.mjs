@@ -71,9 +71,20 @@ if (!text && !process.stdin.isTTY) {
 }
 if (!text) { console.error('No --text or stdin provided'); process.exit(2); }
 
+const defaultConfigPath = 'config/agents.example.yaml';
+const configPath = args.config || (fs.existsSync(defaultConfigPath) ? defaultConfigPath : null);
 let cfg = { mode: args.mode || 'keyword', match: 'any', case_sensitive: false, keywords: [], exclude_keywords: [] };
-if (args.config) {
-  try { cfg = readYamlSection(args.config); } catch (e) { console.error('Config read failed: ' + e.message); process.exit(2); }
+if (configPath) {
+  try { cfg = readYamlSection(configPath); } catch (e) { console.error('Config read failed: ' + e.message); process.exit(2); }
+} else if (!args.mode) {
+  console.error('No --config given and no default config found at ' + defaultConfigPath + '.');
+  console.error('Pass --config <path>, or --mode global|manual.');
+  process.exit(2);
+}
+if (cfg.mode === 'keyword' && cfg.keywords.length === 0) {
+  console.error('Keyword activation mode has an empty keyword list; it would silently never engage.');
+  console.error('Add keywords to ' + (configPath || 'the config') + ' or use --mode global|manual.');
+  process.exit(2);
 }
 
 const result = decide(cfg, text);

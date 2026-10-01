@@ -1,28 +1,44 @@
 # Multi-Agent Orchestration Skill
 
-A portable, capability-first protocol for coordinating three or more AI agents with explicit ownership, independent verification, risk-based execution, and token-aware routing.
+A portable, capability-first protocol for coordinating three or more AI agents with explicit ownership, independent verification, graded evidence, deterministic dispatch, and token-aware routing.
 
 <p align="center"><img src="og-image.png" alt="Multi-Agent Orchestration Skill" width="600"></p>
 
+## What's in this repository
+
+| Path | What it is | Install it when |
+|---|---|---|
+| `SKILL.md` (root) | Orchestration protocol: roles, ownership, verification, queue, evidence, cost | three or more agents must coordinate |
+| `agent-team-handoff/SKILL.md` | Handoff discipline: shared task record, five rules, state machine, anti-patterns | work is relayed across sessions or tools |
+| `references/` | Detail: routing-and-roles, evidence-grading, task-queue, important-task-intake, protocol, anti-patterns, token-efficiency | you need the full rule, not the summary |
+| `config/agents.example.yaml` | Activation, risk, roles, ownership, intake gate, queue, approval, evidence, cost | you are wiring the skill to your agents |
+| `scripts/detect-trigger.mjs` | Keyword activation detector (exit 0 engaged / 1 not engaged) | keyword activation mode |
+| `scripts/orchestrator/` | Task queue CLI + library + tests (zero dependencies, Node 18+) | you want deterministic dispatch and claim locks |
+| `scripts/install.ps1`, `scripts/install.sh` | One-click installers that auto-detect common skill directories | first install |
 
 ## Features
 
-- discovers capabilities instead of assuming agent names imply roles
-- assigns coordinator, implementer, verifier, environment, and domain roles
-- enforces one primary writer per file or resource
-- adds a stronger pipeline for user-marked important or critical work
-- stops on failed gates and requires evidence before completion claims
-- reduces token and API cost with compact packets, bounded outputs, caching, parallel read-only checks, and model escalation
+- discovers capabilities instead of assuming an agent's name implies a role
+- assigns coordinator, implementer, verifier, environment, and domain roles by capability score
+- enforces one primary writer per file or resource, with reviewers limited to isolated artifacts
+- requires a verifier that is not the implementer: an author's self-check is never a verification result
+- grades every claim E1 (reproducible) through E4 (planned), so self-assertion cannot pose as evidence
+- asks the user three questions before an important task starts (solo vs collaborative, security scan, independent verification) and never defaults them
+- adds a stronger pipeline for important and critical work: independent verification, domain review, and explicit approval for external actions
+- runs a deterministic queue: `specify -> implement -> verify -> evidence -> done`, claim locks, dry-run dispatch, per-scope `approve` for deploy/publish/send/upload/delete
+- refuses to disguise an undispatchable task as success (non-zero exit code)
+- keeps a human-readable shared task record as the authority when the queue and intent disagree
+- reduces token and API cost with compact packets, bounded outputs, model tiering, parallel read-only checks, and escalation only where ambiguity lives
 
 It does not provide an absolute guarantee; it makes failures visible, recoverable, and less likely.
 
 ## Activation (when to use)
 
-The skill engages in one of three modes, configured under activation: in config/agents.example.yaml:
+The skill engages in one of three modes, configured under `activation:` in `config/agents.example.yaml`:
 
-- global - engages for every task
-- keyword - engages only when the task text matches configured keywords (default; token-saving)
-- manual - engages only when the user explicitly invokes it
+- **global** - engages for every task
+- **keyword** - engages only when the task text matches configured keywords (default; token-saving)
+- **manual** - engages only when the user explicitly invokes it
 
 For keyword mode, run the trigger detector before starting:
 
@@ -30,9 +46,30 @@ For keyword mode, run the trigger detector before starting:
 
 Exit code 0 means ENGAGED (use the skill); 1 means NOT_ENGAGED. Exclude keywords veto engagement even when a trigger matched.
 
+## The five non-negotiables
+
+1. One primary writer per file or resource at a time.
+2. Verifier != implementer.
+3. No completion claim without criterion-linked evidence.
+4. Irreversible and external actions need separate, explicit user approval (`approve`), which passing verification does not grant.
+5. The human-readable shared record outranks the queue.
+
+## Task queue
+
+    node scripts/orchestrator/orchestrator.mjs create   --title "Fix checkout" --type build --workspace "<workspace>"
+    node scripts/orchestrator/orchestrator.mjs claim    --task task-0001 --agent implementer-a
+    node scripts/orchestrator/orchestrator.mjs complete --task task-0001 --agent implementer-a --evidence "tests pass, exit 0"
+    node scripts/orchestrator/orchestrator.mjs dispatch --task task-0001
+    node scripts/orchestrator/orchestrator.mjs approve  --task task-0002 --by user --scope "deploy to production"
+    node scripts/orchestrator/orchestrator.mjs status
+
+`dispatch` prints a dry-run command; it never starts an agent. Run the tests with:
+
+    node --test scripts/orchestrator/lib.test.mjs
+
 ## Install
 
-Option A: one-click installer (auto-detects common skill dirs).
+Option A - one-click installer (auto-detects common skill dirs).
 
 Windows PowerShell:
 
@@ -42,7 +79,7 @@ Linux/macOS shell:
 
     ./scripts/install.sh
 
-Option B: clone and copy SKILL.md, references, and config into the skill directory supported by your host.
+Option B - clone and copy `SKILL.md`, `references/`, `config/` (and `scripts/` if you want the queue) into the skill directory your host supports. To install the handoff companion as its own skill, copy the `agent-team-handoff/` folder.
 
 Validate your config locally:
 
@@ -50,13 +87,13 @@ Validate your config locally:
 
 ## Host adapter
 
-Implement these five primitives: discover_agents, dispatch, lock, record, and approve. If a primitive is unavailable, use a documented manual fallback and record the limitation.
+Implement these five primitives: `discover_agents`, `dispatch`, `lock`, `record`, and `approve`. If a primitive is unavailable, use a documented manual fallback and record the limitation.
 
 ## Usage
 
 This is important. Three agents are available. Assign the best implementation agent, have another independently test it, and do not deploy.
 
-Expected: capability inventory, role assignment, task packet, ownership lock, implementation evidence, independent verification, acceptance report, and awaiting_user_approval for deployment.
+Expected: capability inventory, role assignment, task packet, intake-gate answers, ownership lock, implementation evidence, independent verification with graded evidence, acceptance report, and `awaiting_user_approval` for deployment.
 
 ## License
 
