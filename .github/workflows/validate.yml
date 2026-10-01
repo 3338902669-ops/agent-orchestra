@@ -20,7 +20,8 @@ jobs:
       - name: Check JSON examples parse
         run: node -e "JSON.parse(require('fs').readFileSync('examples/important-task.json','utf8')); JSON.parse(require('fs').readFileSync('references/agent-manifest.schema.json','utf8')); console.log('JSON OK')"
       - name: Check SKILL.md frontmatter
-        run: node -e "const fs=require('fs');for(const p of ['SKILL.md','agent-team-handoff/SKILL.md']){const t=fs.readFileSync(p,'utf8');if(!/^---\n[\s\S]*?name:\s*\S+[\s\S]*?description:\s*\S+[\s\S]*?\n---/.test(t)){throw new Error('invalid frontmatter: '+p)}console.log('frontmatter OK: '+p)}"
+        run: |
+          node -e 'const fs=require("fs");for(const p of ["SKILL.md","agent-team-handoff/SKILL.md"]){const t=fs.readFileSync(p,"utf8");if(!/^---\n[\s\S]*?name:\s*\S+[\s\S]*?description:\s*\S+[\s\S]*?\n---/.test(t)){throw new Error("invalid frontmatter: "+p)}console.log("frontmatter OK: "+p)}'
       - name: Keyword trigger detector smoke test
         run: |
           node scripts/detect-trigger.mjs --text "we need multi-agent orchestration" && echo "expected ENGAGED" || (echo "expected ENGAGED but got exit $?"; exit 1)
