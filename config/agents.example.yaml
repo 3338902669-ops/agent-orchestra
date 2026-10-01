@@ -63,7 +63,11 @@ activation:
   # Deliberately NO generic work verbs (写/做/改/跑/编辑). They are amplifiers: "写一篇关于 AI
   # 助手如何协同的文章" and "选一个 AI 助手来写代码" both凑齐了 anchor+verb while being nothing of
   # the sort. Coordination is the signal, doing is not.
-  coordination_acts: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力, 交接, 交接班, 核验, 复核, 互相, 覆盖, 冲突, 同一个文件, 同一份文件]
+  # Acts of coordinating, including the handoff/continuation verbs and English stems, because exit 0
+  # now requires one of these alongside the keyword: a question ABOUT the topic ("what is
+  # multi-agent", "multi-agent 是个啥") has a keyword and no act, so it can no longer engage in any
+  # language - which is why the hand-written inquiry-word list could be deleted.
+  coordination_acts: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力, 分头, 分担, 交接, 交接班, 接手, 接着, 继续, 核验, 复核, 互相, 覆盖, 冲突, 同一个文件, 同一份文件, orchestrate, coordinate, parallel, hand off, verify, assign, split, divide, collaborate]
   patterns:
     # A plural count of agents counts only when it is about agents DOING something. "三个 AI 模型的
     # 对比评测" is a lookalike; "我要用三个 AI 一起做" is the real thing. The negative lookahead
@@ -87,13 +91,6 @@ activation:
     # Moved out of keywords: ambiguous on their own, safe once an agent subject is required.
     - '交接|交接班|接力干活'
     - '(独立|交叉|第三方|外部|另一个)\s*(核验|复核|复验|复检)'
-  # Asking ABOUT coordination is not asking to coordinate. Question and evaluation markers are a
-  # closed grammatical class (what/how/why, pros-cons, difference, or-else, recommend), unlike the
-  # open synonym space of "compare" - and unlike a keyword, a question never implies a request.
-  # Three ways a sentence can be ABOUT coordination rather than a request to do it: it asks
-  # (什么/如何/吗), it evaluates (区别/优缺点/还是/推荐), or it produces content about it
-  # (文章/报告/调研). All three downgrade a keyword hit to POSSIBLE.
-  inquiry_words: [什么, 甚么, 怎么, 怎样, 如何, 为什么, 为啥, 吗, 呢, ？, ?, 是不是, 有没有, 介绍, 解释, 含义, 意思, 概念, 定义, 区别, 差异, 优缺点, 利弊, 好处, 坏处, 还是, 推荐, 值得, 该不该, 要不要, 值不值, 是什么, 有哪些, 分析, 评估, 评价, 文章, 报告, 调研, 论文, 教程, 文档, 笔记, 博客, 推文, 课件, 讲义, 科普, 综述, 白皮书, 说明]
   # A request to compare, evaluate or choose between models/assistants is NOT orchestration, no
   # matter how many agent words it contains. The veto is sentence-level and only fires when the
   # sentence carries no collaboration signal of its own, so "让两个 agent 分别改，再对比结果"
@@ -108,7 +105,13 @@ activation:
     # Deliberately short tokens, and deliberately biased to OVER-match: 比/评/排/选/谁/孰/哪 are the
     # grammatical core of comparison in Chinese, and an over-match only costs a downgrade, while a
     # miss is a wrong engage. A long synonym list was tried and lost: "比较" itself was missing.
-    comparison_words: [比, 评, 排, 选, 谁, 孰, 哪, 优劣, 高下, 对决, 较量, 差距, 打分, vs, pk, compare, versus, which, better, best, rank, score, benchmark]
+    # Markers that mean "this sentence is not a request to coordinate": comparison (比/评/排/选/谁/孰/
+    # 哪/vs/compare...), evaluation (区别/差异/优缺点/利弊/好处/坏处/还是/推荐), question
+    # (什么/如何/为什么/吗/是什么) and content production (文章/报告/调研/教程). Any of them downgrades
+    # a keyword hit to POSSIBLE. The list only has to catch markers that appear NEXT TO a coordination
+    # act - the language-open cases ("what is multi-agent", "multi-agent 是个啥") are already handled by
+    # requiring an act alongside the keyword.
+    comparison_words: [比, 评, 排, 选, 谁, 孰, 哪, 优劣, 高下, 对决, 较量, 差距, 打分, 区别, 差异, 优缺点, 利弊, 好处, 坏处, 还是, 推荐, 值得, 什么, 甚么, 怎么, 怎样, 如何, 为什么, 为啥, 吗, 呢, ？, ?, 是不是, 有没有, 含义, 意思, 概念, 定义, 文章, 报告, 调研, 论文, 教程, 文档, 笔记, 博客, 科普, 综述, vs, pk, compare, versus, which, better, best, rank, score, benchmark, what, how, why, should, explain, benefit, tutorial]
   exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊

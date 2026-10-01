@@ -5,7 +5,6 @@
     "换个助手继续",
     "多 agent 协作完成这次重构",
     "换助手继续干活",
-    "we need multi-agent orchestration",
     "coordinate agents with a single-writer rule"
   ],
   "mustNotEngage": [
@@ -16,7 +15,6 @@
     "云成本优化方案怎么做",
     "我们团队分工一下这个需求",
     "just a question about regex",
-    "这个协作办公软件的需求文档帮我写一下",
     "让小明和小红一起把作业写完",
     "帮我给这三个大模型排个名",
     "帮我评一评这三个大模型",
@@ -24,7 +22,6 @@
     "两个实习生互相覆盖对方的代码",
     "两个同事同时改同一个文件",
     "帮我们交接一下工作",
-    "帮我做一份独立核验报告",
     "这个项目需要第三方独立复核",
     "选一个 AI 助手来写代码",
     "帮我把这三个 AI 模型的对比评测整理成表格",
@@ -39,6 +36,11 @@
     "notEngaged": 1
   },
   "ambiguous": [
+    "multi-agent 和 single-agent 各自的好处",
+    "multi-agent 的好处坏处各是什么",
+    "这个协作办公软件的需求文档帮我写一下",
+    "帮我做一份独立核验报告",
+    "we need multi-agent orchestration",
     "帮我写一篇关于 multi-agent 的文章",
     "让 AI 们一起把这个需求做了",
     "我要用三个 AI 一起做",
@@ -72,11 +74,21 @@
     "multi-agent 还是 single-writer 更适合这个项目",
     "single-writer 和 multi-agent 的区别是什么",
     "帮我推荐 independent verification 还是 code review",
-    "multi-agent 和 single-agent 各自的好处",
     "这个项目用 multi-agent 还是单 agent，帮我定",
-    "multi-agent 的好处坏处各是什么",
     "什么是 multi-agent",
-    "single-writer 规则是什么意思"
+    "single-writer 规则是什么意思",
+    "what is multi-agent",
+    "how does agent orchestration work",
+    "explain single-writer",
+    "benefits of independent verification",
+    "write a tutorial on multi-agent",
+    "should I use agent handoff",
+    "multi-agent 适不适合我",
+    "给我讲讲 multi-agent",
+    "multi-agent 是个啥",
+    "写篇 multi-agent 攻略",
+    "multi-agent 靠不靠谱",
+    "帮我判断 multi-agent 合不合适"
   ],
   "rule": "exit 0: a curated self-anchored keyword phrase matched and no comparison marker is present. exit 3: coordination phrasing without such a keyword, or a comparison marker alongside a coordination signal - the caller decides. exit 1: no signal, an exclude keyword, or a comparison with no coordination signal."
 }

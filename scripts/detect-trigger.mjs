@@ -175,15 +175,16 @@ function decide(cfg, text) {
   // the next unlisted X. So patterns SURFACE the sentence (exit 3) and only a curated, self-anchored
   // keyword phrase auto-engages. Downgrading costs the host one decision it is better equipped to
   // make than a word list; a wrong engage is a decision the filter made alone.
-  // Knowing the vocabulary is not asking to use it. A question or an evaluation about the topic
-  // ("什么是 multi-agent", "multi-agent 和 single-agent 的优缺点") matches a keyword and is still
-  // not a request to coordinate, so it is surfaced rather than engaged.
-  const inquiries = (cfg.inquiry_words ?? []).filter((w) => hay.includes(norm(w)));
-  if (hits.length > 0 && inquiries.length === 0) {
-    return { engaged: true, reason: 'keyword matched', hits, patternHits };
+  // Knowing the vocabulary is not asking to use it, and a hand-written list of question/evaluation
+  // words in two languages proved impossible to keep complete (round 11 walked straight through it:
+  // "what is multi-agent", "explain single-writer", "multi-agent 是个啥"). The conjunction is what
+  // closes it: a keyword must be accompanied by an ACT of coordinating. Questions about the topic
+  // carry the keyword and no act, so they surface in whatever language they are asked.
+  if (hits.length > 0 && subjects.length > 0 && acts.length > 0) {
+    return { engaged: true, reason: 'keyword matched with an act of coordinating', hits, acts, patternHits };
   }
   if (hits.length > 0) {
-    return possible('keyword inside a question or evaluation (' + inquiries[0] + ')', { hits, inquiries });
+    return possible('keyword without an act of coordinating (a question or an evaluation about the topic)', { hits });
   }
   if (patternHits.length > 0) {
     return possible('coordination phrasing without an unambiguous keyword (' + patternHits.length + ' pattern(s))', { patternHits });
