@@ -57,7 +57,7 @@ github.com/3338902669-ops/agent-orchestra
 定位：它不是"保证不出错"，而是让出错变得可见、可回滚、可追责。
 
 仓库：https://github.com/3338902669-ops/agent-orchestra
-MIT 协议，欢迎拿去改。
+Apache-2.0 协议（规范文档 CC BY 4.0），欢迎拿去改、拿去实现。
 
 #多agent协作 #AI工作流 #开源
 
@@ -147,7 +147,7 @@ MIT 协议，欢迎拿去改。
 - 仓库：https://github.com/3338902669-ops/agent-orchestra
 - 落地页：https://3338902669-ops.github.io/agent-orchestra/
 - 一键安装：Windows 执行 scripts/install.ps1，Linux/macOS 执行 scripts/install.sh
-- 协议：MIT，随便拿去改
+- 协议：Apache-2.0（规范 CC BY 4.0），随便拿去改、拿去实现
 
 ## 五、发布注意事项
 
@@ -204,7 +204,7 @@ This is not a guarantee of infallibility. It is a set of controls that makes fai
 - Repository: https://github.com/3338902669-ops/agent-orchestra
 - Live landing page: https://3338902669-ops.github.io/agent-orchestra/
 - One-click install: `powershell -ExecutionPolicy Bypass -File scripts/install.ps1` (Windows) or `./scripts/install.sh` (Linux/macOS)
-- License: MIT — use it, change it, ship it.
+- License: Apache-2.0 for the code, CC BY 4.0 for the specification - use it, change it, implement it.
 
 ---
 
@@ -223,4 +223,4 @@ This is not a guarantee of infallibility. It is a set of controls that makes fai
 不是保证不出错，而是让出错看得见、能回滚、找得到人。
 
 仓库：https://github.com/3338902669-ops/agent-orchestra
-MIT，随便拿去改。
+Apache-2.0（规范 CC BY 4.0），随便拿去改。

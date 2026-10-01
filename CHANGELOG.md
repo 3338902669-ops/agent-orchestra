@@ -2,7 +2,28 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.5.0] - 2026-10-02
+
+### Added
+- AGENT-ORCHESTRA-PROTOCOL.md: eight contracts (Task, Resource, Ownership, Handoff, Verification,
+  Evidence, Approval, Recovery), each naming the code that enforces it, the behaviour on violation,
+  the test that pins it, and its honest limit. Stated in terms of operations and observed behaviour
+  rather than of this CLI, so another host can implement it and prove conformance with the same
+  benchmark.
+- bench/protocol-benchmark.mjs: six failure modes through three coordination models (single agent,
+  naive multi-agent, this engine) with deterministic actors and no model calls. The protocol column
+  is zero for five of them and the policy ceiling for the sixth. The gate now RUNS it and fails if
+  any row moves, so the published table cannot drift from reality.
+
+### Changed
+- **Licence: MIT to Apache-2.0 for the code, CC BY 4.0 for the specification.** A protocol is meant
+  to be implemented by others, which needs an explicit patent grant (Apache-2.0) and a specification
+  licence that permits republication with attribution (CC BY 4.0). NOTICE and LICENSE-SPEC added.
+- Positioned as a protocol rather than a skill: the README leads with what agents may and may not do,
+  and the repository description follows.
+
 ## [2.4.3] - 2026-10-02
+
 
 ### Fixed
 - **A single character in the comparison veto caused SILENT MISSES.** The veto list held 比, 评, 排,

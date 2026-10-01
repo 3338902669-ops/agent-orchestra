@@ -178,3 +178,11 @@ with `node bench/protocol-benchmark.mjs`; it needs no dependencies and calls no 
 This repository is the reference implementation. The contracts are deliberately stated in terms of
 **operations and observed behaviour** rather than of this CLI, so another host can implement them
 over its own storage and prove conformance with the same benchmark.
+
+---
+
+## Licence
+
+This specification is licensed under Creative Commons Attribution 4.0 International (CC BY 4.0):
+implement it, republish it, adapt it, with attribution. The reference implementation in this
+repository is licensed under Apache-2.0. See LICENSE, NOTICE and LICENSE-SPEC.

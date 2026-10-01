@@ -1,0 +1,16 @@
+The Agent Orchestra Protocol specification (AGENT-ORCHESTRA-PROTOCOL.md) is licensed under the
+Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+You may share and adapt it, including for commercial purposes, provided that you:
+  1. give appropriate credit to Agent Orchestra and link to the licence;
+  2. indicate whether changes were made;
+  3. do not imply that the licensor endorses your implementation.
+
+The reference implementation (scripts/, config/, SKILL.md and everything else in this
+repository) is licensed under the Apache License 2.0; see LICENSE and NOTICE.
+
+Why the split: a specification is meant to be implemented and republished, so it carries the
+licence that makes that easiest; the code carries the licence that grants a patent licence and
+keeps attribution with the work.
+
+Canonical licence text: https://creativecommons.org/licenses/by/4.0/legalcode

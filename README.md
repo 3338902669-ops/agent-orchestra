@@ -1,4 +1,4 @@
-# Agent Orchestra
+# Agent Orchestra Protocol
 
 **A governed coordination protocol for multi-agent AI work.**
 
@@ -46,7 +46,7 @@ storage and prove conformance with the same benchmark.
 
 ### What this costs you
 
-Zero dependencies, Node 18+, MIT. 87 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation
+Zero dependencies, Node 18+.** 87 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation
 cases, and one gate command (`node scripts/gate.mjs`) that CI and your machine both run - it injects
 ten known faults and must reject every one of them before it reports PASS.
 
@@ -276,4 +276,5 @@ defects and their review dates.
 
 ## License
 
-MIT.
+Apache-2.0 for the code (with the patent grant that a protocol implementer needs), CC BY 4.0 for
+the protocol specification. See LICENSE, NOTICE and LICENSE-SPEC.
