@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 // shipped while every test was green.
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ACTIVATION_CASES = JSON.parse(readFileSync(join(ROOT, 'scripts/activation-cases.json'), 'utf8'));
 const cli = (rel) => join(ROOT, rel);
 
 function run(file, args, options = {}) {
@@ -32,76 +33,24 @@ const engages = (text) => {
 // ── activation: the skill must engage on intent, not on its own vocabulary ────────────
 
 // Real request phrasings that must engage. These are the reason the skill exists.
-const MUST_ENGAGE = [
-  '让 AI 们一起把这个需求做了',
-  '我要用三个 AI 一起做',
-  '几个 agent 同时改代码冲突了',
-  '两个 AI 改同一个文件',
-  '我这几个AI老是互相覆盖对方改动',
-  '换个助手继续',
-  '多 agent 协作完成这次重构',
-  '换助手继续干活',
-  '我们需要独立核验这个实现',
-  'we need multi-agent orchestration',
-  'coordinate agents with a single-writer rule',
-  // Found by the independent verifier: people name the models instead of saying "agent".
-  '让 Claude 和 GPT 一起把这个功能做了',
-  '让 Gemini 和 Copilot 一起干活',
-  // Round 2: real spoken phrasings that the vocabulary was missing.
-  '这活让两个大模型一块儿干',
-  '双 AI 并行开发这个功能',
-  '两个 bot 并行开发这个功能',
-  '让两个大模型分别负责前后端开发',
-  // Round 3: real coordination was being missed because the collaboration list lacked 各.
-  '让两个 agent 各写一个版本，最后我来对比哪个好',
-  '让 Claude 和 GPT 各做一个模块，最后我看下哪个做得好',
-  // Round 4: the ambiguous keywords moved into patterns, so these still work WITH a subject.
-  '把任务交接给下一个 agent',
-  '让另一个 agent 做独立核验',
-];
+// Loaded from scripts/activation-cases.json: one list, shared with the verifier evidence
+// collector, so the two cannot drift apart the way hand-copied lists do.
+const MUST_ENGAGE = ACTIVATION_CASES.mustEngage;
 
 // Ordinary requests that merely contain a word the skill also uses. Engaging here is worse
 // than staying silent: the skill would reorganise work that has nothing to do with agents.
-const MUST_NOT_ENGAGE = [
-  '帮我写个 k8s 编排文件',
-  'docker-compose 编排这三个服务',
-  '这个函数加个 verifier 校验入参',
-  '帮我做下项目验收报告',
-  '云成本优化方案怎么做',
-  '我们团队分工一下这个需求',
-  'just a question about regex',
-  // Also found by the verifier: a generic word and a bare plural both look like the real thing.
-  '这个协作办公软件的需求文档帮我写一下',
-  '帮我把这三个 AI 模型的对比评测整理成表格',
-  // Round 2: comparisons and human collaboration dressed up as agent work.
-  '帮我评测一下 Claude 和 GPT 哪个写代码更强',
-  '让小明和小红一起把作业写完',
-  '帮我把这三个 AI 大模型的对比评测整理成表格',
-  'GPT 和 Gemini 的区别是什么，帮我写篇对比文章',
-  '我有三个 AI 助手，帮我对比一下它们哪个更适合做代码评审',
-  // Round 3: comparison/selection dressed in synonyms, and people disguised as agents.
-  '帮我给这三个大模型排个名',
-  '帮我评一评这三个大模型',
-  '帮我 compare 一下这三个大模型谁更适合',
-  '两个实习生互相覆盖对方的代码',
-  '两个同事同时改同一个文件',
-  // Round 4: ambiguous keywords used to bypass the conjunction entirely.
-  '帮我们交接一下工作',
-  '帮我做一份独立核验报告',
-  '这个项目需要第三方独立复核',
-  // Round 4: a generic work verb used to be enough once an agent word appeared.
-  '选一个 AI 助手来写代码',
-];
+// Loaded from scripts/activation-cases.json: one list, shared with the verifier evidence
+// collector, so the two cannot drift apart the way hand-copied lists do.
+const MUST_NOT_ENGAGE = ACTIVATION_CASES.mustNotEngage;
 
 // Known limitation F-008, asserted rather than hidden: a request to produce content ABOUT
 // multi-agent collaboration still engages, because the sentence legitimately contains an agent
 // subject and an act of coordinating ("write an article about how AI assistants collaborate").
 // The cost is a needless skill load, not a reorganised workflow, and the register records it.
 // If this ever changes, the test fails and the register entry is revisited.
-const KNOWN_FALSE_ENGAGE = [
-  '写一篇关于 AI 助手如何协同的文章',
-  '做 AI 一起协作的调研',
-];
+// Loaded from scripts/activation-cases.json: one list, shared with the verifier evidence
+// collector, so the two cannot drift apart the way hand-copied lists do.
+const KNOWN_FALSE_ENGAGE = ACTIVATION_CASES.knownLimits;
 
 test('activation engages on how people describe the problem', () => {
   const missed = MUST_ENGAGE.filter((t) => !engages(t).engaged);

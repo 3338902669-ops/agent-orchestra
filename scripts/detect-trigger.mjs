@@ -33,7 +33,7 @@ function readYamlSection(file) {
   const out = {
     mode: 'keyword', match: 'any', case_sensitive: false,
     keywords: [], patterns: [], exclude_keywords: [], agent_anchors: [], software_objects: [], coordination_acts: [],
-    comparison_veto: { comparison_words: [], collaboration_words: [] },
+    comparison_veto: { comparison_words: [], collaboration_words: [], attribute_nouns: [] },
   };
   let inActivation = false, inList = null;
   for (const line of lines) {
@@ -64,6 +64,7 @@ function readYamlSection(file) {
       collaboration_words: 'comparison_veto.collaboration_words',
       agent_anchors: 'agent_anchors',
       software_objects: 'software_objects',
+      attribute_nouns: 'comparison_veto.attribute_nouns',
       coordination_acts: 'coordination_acts',
     }[key];
     if (raw.startsWith('[')) {
@@ -112,7 +113,16 @@ function decide(cfg, text) {
   // real work that merely mentions a comparison ("...各自改完再对比") engagable.
   const veto = cfg.comparison_veto ?? {};
   const comparisons = (veto.comparison_words ?? []).filter((w) => hay.includes(norm(w)));
-  const collaborations = (veto.collaboration_words ?? []).filter((w) => hay.includes(norm(w)));
+  const attributeNouns = veto.attribute_nouns ?? [];
+  // An escape only counts when collaborating is something the sentence DOES, not something it
+  // compares. "协同能力" describes an attribute, so it cannot release the veto.
+  const collaborationActs = (veto.collaboration_words ?? []).filter((w) => {
+    if (!hay.includes(norm(w))) return false;
+    if (attributeNouns.length === 0) return true;
+    const attributeForm = new RegExp(w + '\\s*的?\\s*(' + attributeNouns.join('|') + ')');
+    return !attributeForm.test(text);
+  });
+  const collaborations = collaborationActs;
   if (comparisons.length > 0 && collaborations.length === 0) {
     return {
       engaged: false,

@@ -94,6 +94,11 @@ activation:
   comparison_veto:
     comparison_words: [对比, 评测, 测评, 区别, 差异, 优缺点, 选型, 排名, 性价比, 哪个, 哪一个, 哪个更]
     collaboration_words: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力]
+    # The escape hatch above can be turned against the veto: "对比这两个 AI 助手的协同能力" is a
+    # comparison in which the compared ATTRIBUTE happens to be collaboration, so 协同 released the
+    # veto. A collaboration word sitting directly in front of one of these nouns is an attribute
+    # being described, not an act of coordinating, and does not count as an escape.
+    attribute_nouns: [能力, 效率, 效果, 表现, 水平, 质量, 差距, 优劣, 程度, 方式, 机制, 模式, 价值, 收益]
   exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊
