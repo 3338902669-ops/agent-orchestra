@@ -30,7 +30,11 @@ function readYamlSection(file) {
   // minimal YAML reader for the activation block only
   const raw = fs.readFileSync(file, 'utf8');
   const lines = raw.split(/\r?\n/);
-  const out = { mode: 'keyword', match: 'any', case_sensitive: false, keywords: [], patterns: [], exclude_keywords: [] };
+  const out = {
+    mode: 'keyword', match: 'any', case_sensitive: false,
+    keywords: [], patterns: [], exclude_keywords: [],
+    comparison_veto: { comparison_words: [], collaboration_words: [] },
+  };
   let inActivation = false, inList = null;
   for (const line of lines) {
     const trimmed = line.trim();
@@ -38,19 +42,43 @@ function readYamlSection(file) {
     if (inActivation && trimmed !== '' && !trimmed.startsWith('-') && !trimmed.startsWith('#') && !/^\s/.test(line)) { inActivation = false; }
     if (!inActivation) continue;
     if (trimmed.startsWith('- ')) {
-      if (inList) out[inList].push(trimmed.slice(2).replace(/^["']|["']$/g, ''));
+      if (inList) {
+        const value = trimmed.slice(2).replace(/^["']|["']$/g, '');
+        const [head, tail] = inList.split('.');
+        if (tail) out[head][tail].push(value);
+        else out[inList].push(value);
+      }
       continue;
     }
     const m = trimmed.match(/^([a-z_]+):\s*(.*)$/);
     if (!m) continue;
-    const key = m[1], val = m[2].replace(/^["']|["']$/g, '');
+    const key = m[1];
+    const raw = m[2];
+    // Inline arrays ("key: [a, b]") are as valid as block lists, and silently reading only one
+    // of the two is how a veto list ends up empty while the config looks correct.
+    const target = {
+      keywords: 'keywords',
+      patterns: 'patterns',
+      exclude_keywords: 'exclude_keywords',
+      comparison_words: 'comparison_veto.comparison_words',
+      collaboration_words: 'comparison_veto.collaboration_words',
+    }[key];
+    if (raw.startsWith('[')) {
+      const items = raw.replace(/^\[/, '').replace(/\]\s*$/, '')
+        .split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+      if (target) {
+        const [head, tail] = target.split('.');
+        if (tail) out[head][tail].push(...items);
+        else out[target].push(...items);
+      }
+      inList = null;
+      continue;
+    }
+    const val = raw.replace(/^["']|["']$/g, '');
     if (key === 'mode') out.mode = val || 'keyword';
     else if (key === 'match') out.match = val || 'any';
     else if (key === 'case_sensitive') out.case_sensitive = val === 'true';
-    else if (key === 'keywords') inList = 'keywords';
-    else if (key === 'patterns') inList = 'patterns';
-    else if (key === 'exclude_keywords') inList = 'exclude_keywords';
-    else inList = null;
+    else inList = target ?? null;
   }
   return out;
 }
@@ -75,6 +103,19 @@ function decide(cfg, text) {
 
   const excludes = (cfg.exclude_keywords ?? []).filter((k) => hay.includes(norm(k)));
   if (excludes.length > 0) return { engaged: false, reason: 'excluded by: ' + excludes.join(',') };
+
+  // Sentence-level veto: comparing or choosing between models is a different job from running
+  // several of them, and no amount of agent vocabulary changes that. The escape hatch keeps
+  // real work that merely mentions a comparison ("...各自改完再对比") engagable.
+  const veto = cfg.comparison_veto ?? {};
+  const comparisons = (veto.comparison_words ?? []).filter((w) => hay.includes(norm(w)));
+  const collaborations = (veto.collaboration_words ?? []).filter((w) => hay.includes(norm(w)));
+  if (comparisons.length > 0 && collaborations.length === 0) {
+    return {
+      engaged: false,
+      reason: 'comparison/evaluation request, not orchestration (' + comparisons.join(', ') + ')',
+    };
+  }
 
   const hits = (cfg.keywords ?? []).filter((k) => hay.includes(norm(k)));
   const patternHits = compilePatterns(cfg).filter((p) => p.re.test(text)).map((p) => p.source);

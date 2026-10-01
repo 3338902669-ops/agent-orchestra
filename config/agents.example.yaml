@@ -53,22 +53,32 @@ activation:
   # vocabulary the skill itself uses. Deliberately single-quoted so YAML leaves the
   # backslashes alone.
   patterns:
-    # A plural count of agents only counts when it is about DOING something. "三个 AI 模型的
-    # 对比评测" is a lookalike; "我要用三个 AI 一起做" is the real thing. The negative
-    # lookahead is what separates them, and a model comparison must not engage.
-    - '(多|几|两|三|四|五|六|\d+)\s*个?\s*(ai|agent|代理|助手|智能体)(?!\s*(的|模型|软件|产品|工具|平台|服务|对比|评测|测评|排名|价格|方案|供应商|公司))'
-    - '(ai|agent|代理|助手|智能体)[^。！？,.，]{0,12}(一起|同时|共同|协同|配合|分别)'
-    # People name the models. "让 Claude 和 GPT 一起做" is multi-agent work with no generic
-    # agent word in sight, so the names have to be in the vocabulary.
-    - '(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,20}(和|与|跟|、)[^。！？,.，]{0,20}(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)'
-    - '(让|叫|请|用|派)[^。！？,.，]{0,24}(和|与|跟|、)[^。！？,.，]{0,24}(一起|同时|共同|分别|协作|配合)'
-    - '(换个?|再换个?|换一?个)\s*(助手|ai|agent|代理|模型|工具)'
+    # A plural count of agents counts only when it is about agents DOING something. "三个 AI 模型的
+    # 对比评测" is a lookalike; "我要用三个 AI 一起做" is the real thing. The negative lookahead
+    # covers the comparison nouns, including when a modifier ("AI 大模型") sits in between.
+    - '(多|几|两|三|四|五|六|双|\d+)\s*个?\s*(ai|agent|bot|代理|助手|智能体|大模型|大语言模型|模型)(?!\s*(的|大?模型|大?语言模型|软件|产品|工具|平台|服务|对比|评测|测评|排名|价格|方案|供应商|公司))'
+    # Agent word plus an act of collaborating. "一块儿" is how people actually say it.
+    - '(ai|agent|bot|代理|助手|智能体|大模型|大语言模型)[^。！？,.，]{0,12}(一起|一块儿|同时|共同|协同|协作|配合|分别|并行)'
+    # People name the models, and a name pair alone proves nothing: it must sit next to an act of
+    # collaborating, otherwise "Claude 和 GPT 哪个强" (a comparison) would engage.
+    - '(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,20}(和|与|跟|、)[^。！？,.，]{0,20}(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,24}(一起|一块儿|同时|共同|协作|协同|配合|分别|分工|并行|接力)'
+    # "让 X 和 Y 一起" only counts when an agent-ish thing is being directed - otherwise it fires on
+    # "让小明和小红一起写作业", which is two people, not two agents.
+    - '(让|叫|请|用|派|安排)[^。！？,.，]{0,16}(ai|agent|bot|代理|助手|智能体|大模型|大语言模型|模型)[^。！？,.，]{0,24}(一起|一块儿|同时|共同|分别|协作|协同|配合|分工|并行)'
+    - '(换个?|再换个?|换一?个)\s*(助手|ai|agent|代理|大模型|模型|工具)'
     - '(互相|相互|彼此)\s*(覆盖|冲突|打架|撞车|改乱)'
     - '同一个文件|同一份文件'
     - '(同时|并行)\s*(改|写|编辑|动)'
-    - '(agent|ai|代理|助手|智能体)[^。！？,.，]{0,10}(编排|分工|分配|调度|协同)'
+    - '(agent|ai|代理|助手|智能体|大模型)[^。！？,.，]{0,10}(编排|分工|分配|调度|协同)'
     - '(独立|交叉|第三方|外部|另一个)\s*(核验|验证|复核|复验|检验|审查|签名)'
     - '(冲突|覆盖)(了|的)?\s*(代码|改动|文件|修改)'
+  # A request to compare, evaluate or choose between models/assistants is NOT orchestration, no
+  # matter how many agent words it contains. The veto is sentence-level and only fires when the
+  # sentence carries no collaboration signal of its own, so "让两个 agent 分别改，再对比结果"
+  # (real work that happens to include a comparison) still engages.
+  comparison_veto:
+    comparison_words: [对比, 评测, 测评, 区别, 差异, 优缺点, 选型, 排名, 性价比, 哪个, 哪一个, 哪个更]
+    collaboration_words: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 并行, 接力]
   exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊

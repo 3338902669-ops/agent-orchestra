@@ -1,6 +1,8 @@
 ---
 name: agent-orchestra
 description: Use when three or more AI agents are available and a task needs coordinated execution, or when work must be handed to another agent, session or tool. Ships capability-scored role assignment from a roster of any size (any agent names), single-writer ownership, a verification gate run by the best-suited agent that cannot be walked past, a shared handoff record, evidence-graded completion, a dependency-free task-queue CLI, an important-task intake gate, and a coordination anti-pattern guide. Activation is configurable: global, keyword-triggered, or manual.
+
+Do not use for: container or infrastructure orchestration (k8s, docker-compose, service meshes), ordinary job queues and schedulers, comparing or evaluating AI models against each other, or splitting work between people. Those share vocabulary with this skill and none of them is multi-agent coordination.
 ---
 
 # Agent Orchestra
@@ -26,9 +28,17 @@ Configure in `config/agents.example.yaml` under `activation:`.
 
 1. Read the activation block from `config/agents.example.yaml`.
 2. global -> engage. manual -> engage only when the user asked for multi-agent work or a handoff.
-3. keyword -> run `node scripts/detect-trigger.mjs --text "<task text>"`. Exit 0 (ENGAGED) means use this skill; 1 (NOT_ENGAGED) means do not. Exclude keywords veto engagement.
+3. keyword -> run `node scripts/detect-trigger.mjs --text "<task text>"`. Exit 0 (ENGAGED) means use this skill; 1 (NOT_ENGAGED) means do not. Exclude keywords, and the sentence-level comparison veto, win over any hit.
 
-> 中文：默认关键词触发；命中「多agent / 协作 / 分工 / 编排 / 交接 / 接力 / 独立核验 / 省token」等词即启用。
+What the keyword layer is, honestly: a **conservative deterministic filter**, not a full
+understanding of intent. It matches unambiguous phrases plus intent patterns, and it refuses to
+engage when the request is really a comparison of models or a split between people - those share
+the vocabulary and none of them is coordination. Being wrong in the other direction costs one
+missed phrase, so it is tuned to stay silent when unsure rather than to fire on a lookalike. The
+description above is what the host model routes on, and an explicit request always wins: if a
+user says to use this skill, no keyword check applies.
+
+> 中文：关键词层是**保守的确定性过滤器**，不是万能的意图理解。命中明确词组与意图正则，同时句级否决「模型对比评测」「人的分工」这类同词不同义的请求；不确定时宁可沉默也不误召。真正的路由依据是上面的 description，且**用户明确要求使用时，一律优先**。
 
 ## Seven non-negotiables
 

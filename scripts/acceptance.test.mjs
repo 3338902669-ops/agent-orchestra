@@ -47,6 +47,11 @@ const MUST_ENGAGE = [
   // Found by the independent verifier: people name the models instead of saying "agent".
   '让 Claude 和 GPT 一起把这个功能做了',
   '让 Gemini 和 Copilot 一起干活',
+  // Round 2: real spoken phrasings that the vocabulary was missing.
+  '这活让两个大模型一块儿干',
+  '双 AI 并行开发这个功能',
+  '两个 bot 并行开发这个功能',
+  '让两个大模型分别负责前后端开发',
 ];
 
 // Ordinary requests that merely contain a word the skill also uses. Engaging here is worse
@@ -62,6 +67,12 @@ const MUST_NOT_ENGAGE = [
   // Also found by the verifier: a generic word and a bare plural both look like the real thing.
   '这个协作办公软件的需求文档帮我写一下',
   '帮我把这三个 AI 模型的对比评测整理成表格',
+  // Round 2: comparisons and human collaboration dressed up as agent work.
+  '帮我评测一下 Claude 和 GPT 哪个写代码更强',
+  '让小明和小红一起把作业写完',
+  '帮我把这三个 AI 大模型的对比评测整理成表格',
+  'GPT 和 Gemini 的区别是什么，帮我写篇对比文章',
+  '我有三个 AI 助手，帮我对比一下它们哪个更适合做代码评审',
 ];
 
 test('activation engages on how people describe the problem', () => {
