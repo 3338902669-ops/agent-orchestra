@@ -38,8 +38,9 @@ model name) **and** describe an act of coordinating. That conjunction is what ke
 the vocabulary, and they are people, not agents. A sentence-level veto then removes requests that
 are really about comparing or choosing between models.
 
-Three independent verifiers' rounds found 25 cases that broke earlier versions of this table;
-every one is now a permanent test, and the fixed cases are the ones that matter most. What the
+Adversarial verification rounds kept breaking earlier versions of this table; every case they
+found is now a permanent entry in `scripts/activation-cases.json`, which the acceptance test and
+any verification script both read. What the
 layer does NOT do is understand arbitrary phrasing: an unusual way of asking may stay silent, and
 that is the intended failure direction - one missed phrase costs a nudge, a false engage
 reorganises work that has nothing to do with agents. The description above is what the host model

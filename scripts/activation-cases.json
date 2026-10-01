@@ -1,6 +1,6 @@
 {
   "schema": "agent-orchestra/activation-cases@1",
-  "note": "Single source of truth for the activation contract: the acceptance test and the verifier evidence collector both read this file, so they cannot drift apart.",
+  "note": "Single source of truth for the activation contract: the acceptance test and the verifier evidence collector both read this file, so they cannot drift apart. Round 6 added the semantic family where collaboration is the compared attribute with a modifier in between (协同开发能力 / 协同工作效率 / 谁更适合做协同开发).",
   "mustEngage": [
     "让 AI 们一起把这个需求做了",
     "我要用三个 AI 一起做",
@@ -22,8 +22,7 @@
     "让两个 agent 各写一个版本，最后我来对比哪个好",
     "让 Claude 和 GPT 各做一个模块，最后我看下哪个做得好",
     "把任务交接给下一个 agent",
-    "让另一个 agent 做独立核验",
-    "让两个 agent 各写一个版本，最后我来对比哪个好"
+    "让另一个 agent 做独立核验"
   ],
   "mustNotEngage": [
     "帮我写个 k8s 编排文件",
@@ -49,7 +48,12 @@
     "帮我做一份独立核验报告",
     "这个项目需要第三方独立复核",
     "选一个 AI 助手来写代码",
-    "帮我对比一下这两个 AI 助手的协同能力"
+    "帮我对比一下这两个 AI 助手的协同能力",
+    "帮我对比一下这两个 AI 助手的协同开发能力",
+    "对比一下 GPT 和 Claude 的协同工作效率",
+    "对比一下这两个模型谁更适合做协同开发",
+    "对比一下这两个 AI 助手的协同写代码效率",
+    "对比一下这两个 AI 助手谁更适合做协同处理任务"
   ],
   "knownLimits": [
     "写一篇关于 AI 助手如何协同的文章",

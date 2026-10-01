@@ -119,7 +119,10 @@ function decide(cfg, text) {
   const collaborationActs = (veto.collaboration_words ?? []).filter((w) => {
     if (!hay.includes(norm(w))) return false;
     if (attributeNouns.length === 0) return true;
-    const attributeForm = new RegExp(w + '\\s*的?\\s*(' + attributeNouns.join('|') + ')');
+    // Allow a short modifier between the word and the attribute noun: "协同开发能力" describes an
+    // attribute just as much as "协同能力" does, and pinning the guard to zero distance only moved
+    // the hole one word to the right.
+    const attributeForm = new RegExp(w + '\\S{0,6}?(' + attributeNouns.join('|') + ')');
     return !attributeForm.test(text);
   });
   const collaborations = collaborationActs;
