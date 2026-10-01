@@ -207,44 +207,66 @@ step('findings', 'accepted defects have an owner and a live review date', () => 
 
 function selfTest() {
   const mutations = [
-    { name: 'config the engine cannot use (the bug that shipped)', file: 'config/agents.example.yaml',
+    { name: 'config the engine cannot use (the bug that shipped)', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('security_scan: [planned, skip]', 'security_scan: [yes, no]'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'single-writer ownership disabled', file: 'config/agents.example.yaml',
+    { name: 'single-writer ownership disabled', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('one_primary_writer_per_resource: true', 'one_primary_writer_per_resource: false'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'verification gate no longer fail-closed', file: 'config/agents.example.yaml',
+    { name: 'verification gate no longer fail-closed', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('unscored_verifier: fail_closed', 'unscored_verifier: continue'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'dispatch no longer a dry run', file: 'config/agents.example.yaml',
+    { name: 'dispatch no longer a dry run', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('dispatch_mode: dry_run', 'dispatch_mode: auto_launch'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'rigor default is not an engine level', file: 'config/agents.example.yaml',
+    { name: 'rigor default is not an engine level', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('  default: L2', '  default: L9'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'a capability the engine does not know', file: 'config/agents.example.yaml',
+    { name: 'a capability the engine does not know', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('capabilities: [full, web', 'capabilities: [full, nonsense, web'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'the evidence grade vocabulary drifts', file: 'config/agents.example.yaml',
+    { name: 'the evidence grade vocabulary drifts', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('grading: [E1, E2, E3, E4]', 'grading: [E1_reproducible, E2_peer_check]'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'the comparison markers are emptied', file: 'config/agents.example.yaml',
+    { name: 'the comparison markers are emptied', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace(/comparison_words: \[[^\]]*\]/, 'comparison_words: []'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'the activation anchors are emptied', file: 'config/agents.example.yaml',
+    { name: 'the activation anchors are emptied', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace(/agent_anchors: \[[^\]]*\]/, 'agent_anchors: []'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
-    { name: 'the handoff example loses a required file', file: 'examples/handoff/CURRENT-TASK.md',
+    { name: 'the handoff record loses its next step', fixtureDir: 'examples/handoff', target: 'CURRENT-TASK.md', file: 'examples/handoff/CURRENT-TASK.md',
       mutate: (t) => t.replace(/下一步:[^\n]*\r?\n?/, ''),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/check-handoff.mjs'), '--dir', dir]] },
   ];
   const results = [];
+  const copyDir = (from, to) => {
+    mkdirSync(to, { recursive: true });
+    for (const entry of readdirSync(from, { withFileTypes: true })) {
+      const src = join(from, entry.name);
+      const dst = join(to, entry.name);
+      if (entry.isDirectory()) copyDir(src, dst);
+      else writeFileSync(dst, readFileSync(src));
+    }
+  };
   for (const m of mutations) {
     const dir = mkdtempSync(join(tmpdir(), 'ao-selftest-'));
+    // A mutation must be applied to the very file the command reads. Writing everything to
+    // mutated.yaml once made the handoff mutation pass for the wrong reason (an empty directory
+    // fails the checker too), which is a false qualification rather than a test.
+    if (m.fixtureDir) {
+      copyDir(join(ROOT, m.fixtureDir), dir);
+      // Guard against the false qualification the verifier caught: if the file the command reads is
+      // not the file being mutated, the mutation proves nothing.
+      if (!existsSync(join(dir, m.target))) {
+        results.push({ name: m.name, rejected: false, why: 'the fixture does not contain ' + m.target + ', so the mutation would not be checked' });
+        rmSync(dir, { recursive: true, force: true });
+        continue;
+      }
+    }
     const original = readFileSync(join(ROOT, m.file), 'utf8');
     const mutated = m.mutate(original);
-    if (mutated === original) { results.push({ name: m.name, rejected: false, why: 'mutation did not apply' }); continue; }
-    writeFileSync(join(dir, 'mutated.yaml'), mutated, 'utf8');
+    if (mutated === original) { results.push({ name: m.name, rejected: false, why: 'mutation did not apply' }); rmSync(dir, { recursive: true, force: true }); continue; }
+    writeFileSync(join(dir, m.target), mutated, 'utf8');
     for (const extra of ['SKILL.md', 'README.md']) {
       try { writeFileSync(join(dir, extra), readFileSync(join(ROOT, extra))); } catch { /* optional */ }
     }

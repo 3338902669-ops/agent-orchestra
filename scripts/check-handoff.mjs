@@ -53,7 +53,7 @@ export function checkHandoff(dir) {
     }
   }
   // The iron rule that makes the record authoritative: it outranks the scheduler.
-  if (!/outranks|优先于|高于/.test(text)) {
+  if (!/outranks|(?<!不)优先于|(?<!不)高于/.test(text)) {
     problems.push('CURRENT-TASK.md does not state that the record outranks the queue');
   }
   return { ok: problems.length === 0, problems, values };
