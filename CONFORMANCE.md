@@ -47,8 +47,9 @@ has no enforcement point or no test, or if this file has drifted from `conforman
 | G1 | Gate | The gate MUST inject known faults and reject every one | ENFORCED | `scripts/gate.mjs` | gate mutation: the description becomes a plain scalar containing a colon (the GitHub YAML error) |
 | G2 | Gate | SKILL.md frontmatter MUST parse, not merely contain the keys | ENFORCED | `scripts/check-frontmatter.mjs` | gate mutation: the description becomes a plain scalar containing a colon (the GitHub YAML error) |
 | G3 | Gate | Shipped text files MUST be LF so scripts run where they are unpacked | ENFORCED | `scripts/gate.mjs` | gate mutation: a shipped file reverts to CRLF |
+| G4 | Gate | The published artifact MUST be LF-clean, executable, complete, and MUST NOT name the repository | ENFORCED | `scripts/check-artifact.mjs` | gate mutation: artifact |
 
-**40 requirements: 37 ENFORCED, 1 DOCUMENTED ONLY, 2 OUT OF SCOPE.**
+**41 requirements: 38 ENFORCED, 1 DOCUMENTED ONLY, 2 OUT OF SCOPE.**
 
 The two OUT OF SCOPE rows are the honest boundary of a local, dependency-free runtime, and they
 are registered in KNOWN-FINDINGS.md rather than implied: E1 is a structural claim rather than

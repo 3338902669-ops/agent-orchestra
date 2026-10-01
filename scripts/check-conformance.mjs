@@ -30,6 +30,11 @@ export function testNames() {
   return names;
 }
 
+export function gateSteps() {
+  const text = readFileSync(join(ROOT, 'scripts/gate.mjs'), 'utf8');
+  return new Set([...text.matchAll(/step\('([^']+)'/g)].map((m) => m[1]));
+}
+
 export function gateMutations() {
   const text = readFileSync(join(ROOT, 'scripts/gate.mjs'), 'utf8');
   return new Set([...text.matchAll(/name: '([^']+)'/g)].map((m) => m[1]));
@@ -69,6 +74,11 @@ export function checkConformance(data) {
       } else if (ref.startsWith('gate:')) {
         const name = ref.slice(5);
         if (![...mutations].some((m) => m === name)) problems.push(at + 'no gate mutation named "' + name + '"');
+      } else if (ref.startsWith('step:')) {
+        // Some controls are pinned by a gate step rather than by a test-suite name - the artifact
+        // checker proves itself with its own negative self-test. The step must exist all the same.
+        const name = ref.slice(5);
+        if (!gateSteps().has(name)) problems.push(at + 'no gate step named "' + name + '"');
       } else problems.push(at + 'unrecognised pin reference ' + ref);
     }
   }

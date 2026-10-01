@@ -174,6 +174,10 @@ step('benchmark', 'the protocol still stops every failure mode the README claims
   return { status: 0, durationMs: 0, out: rows.length + ' failure modes, protocol column all zero', err: '' };
 }, 'exit 0: every failure mode is stopped by the engine');
 
+step('artifact', 'the PUBLISHED zip is LF-clean, executable, and free of the repository address', () =>
+  node(['scripts/check-artifact.mjs', '--self-test']),
+  'exit 0: the real artifact passes, and an artifact with the address pasted in is refused');
+
 step('conformance', 'every MUST maps to enforcement and a test, and the table cannot drift', () =>
   node(['scripts/check-conformance.mjs']),
   'exit 0: every reference resolves, every ENFORCED row has enforcement + a pinning test, and CONFORMANCE.md matches conformance.json');

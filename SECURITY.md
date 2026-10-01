@@ -4,7 +4,7 @@
 
 If you discover a security issue in this skill, do not open a public issue. Report it privately via a GitHub Security Advisory at:
 
-https://github.com/3338902669-ops/agent-orchestra/security/advisories/new
+the private security-advisory channel of the repository you received this from
 
 You will receive an acknowledgment within 5 business days and a status update once triage begins.
 

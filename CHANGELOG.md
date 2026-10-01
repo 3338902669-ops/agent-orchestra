@@ -2,6 +2,54 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.5.3] - 2026-10-02
+
+### Added
+- **scripts/check-artifact.mjs**: the gate now verifies the PUBLISHED zip rather than the tree it was
+  built from - every text entry LF-clean, `install.sh` at 100755, the required files present, and no
+  entry naming the repository address. Entries are decompressed before they are searched, because a
+  byte scan of a deflated archive reports a clean artifact even when the address is in every file.
+- The check carries its own **negative self-test**: it builds the artifact, then builds one from a copy
+  of the tree with the address pasted into a shipped file, and requires the second to be refused. A
+  control that has never rejected anything is a hope. `AO_BUILD_ROOT` exists so the builder can be
+  pointed at that deliberately broken tree.
+- `artifact-denylist.json` holds the forbidden patterns **outside** the artifact: the first draft kept
+  them in the checker, the checker caught its own leak on its first run, and the file is now excluded
+  from the package (a checker shipped to buyers must not name what it protects). A missing denylist
+  fails closed rather than reading as nothing-forbidden-found.
+- The conformance matrix accepts a `step:` pin, so a control enforced by a gate step can be cited and
+  checked like one pinned by a test. 41 requirements: 38 ENFORCED.
+
+### Fixed
+- The artifact checker's first run reported `install.sh has mode 755, not 100755` on a correct artifact:
+  it masked the ZIP mode with 0o7777, which strips the file-type bits. Kept the full 16 bits.
+
+Gate: 15 steps. 89 engine tests, 8 acceptance, 8 handoff.
+
+### Added
+- **CONFORMANCE.md**: every MUST in the protocol mapped to the code that enforces it and the test
+  that pins it - 40 requirements across the eight contracts, **37 ENFORCED, 1 DOCUMENTED ONLY, 2 OUT OF
+  SCOPE**. `scripts/check-conformance.mjs` refuses a reference that does not resolve, an ENFORCED row
+  without an enforcement point or a pinning test, and any drift between the table and its data. The
+  matrix found two real gaps while being written: the prototype-chain fix had no test, and the
+  line-endings check had no negative control. Both exist now.
+- scripts/build-release.mjs: the published ZIP is built by a script that deflates text, sets
+  install.sh to mode 100755 (a .NET-built ZIP marks it 644, so the one-click installer was Permission
+  denied for whoever downloaded it), and refuses to write an artifact that fails its own LF and
+  completeness checks.
+
+### Fixed
+- The last MIT statement in the repository (inside the long-form Chinese promotion article) now reads
+  Apache-2.0 for the code, CC BY 4.0 for the specification.
+- promotion.md and references/agent-manifest.schema.json were still CRLF; every shipped text file is
+  LF now, and the gate checks the whole tree rather than just the installers.
+- README describes 83 activation cases as a corpus driven by 8 acceptance checks, so it is not read
+  as 83 independent tests.
+- The frontmatter checker documents its scope honestly: it parses the SUPPORTED FRONTMATTER SUBSET,
+  not general YAML.
+
+Gate: 14 steps. 89 engine tests, 8 acceptance, 8 handoff.
+
 ## [2.5.1] - 2026-10-02
 
 A verification pass that compared the specification against the runtime found two release blockers and

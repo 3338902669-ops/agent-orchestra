@@ -9,21 +9,28 @@
 // Usage: node scripts/build-release.mjs [output-path]
 
 import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, relative, dirname } from 'node:path';
+import { join, relative, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { deflateRawSync } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 
-const ROOT = fileURLToPath(new URL('..', import.meta.url));
+// AO_BUILD_ROOT lets the artifact checker build from a deliberately broken copy of the tree, which is
+// how its negative self-test proves the check can fail at all.
+const ROOT = process.env.AO_BUILD_ROOT
+  ? resolve(process.env.AO_BUILD_ROOT)
+  : fileURLToPath(new URL('..', import.meta.url));
 const OUT = process.argv[2] || join(ROOT, 'agent-orchestra.zip');
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'evidence']);
+// artifact-denylist.json is deliberately NOT shipped: a checker that names the repository it protects
+// would hand the reader the very address it exists to keep out of the artifact.
+const SKIP_FILES = new Set(['artifact-denylist.json']);
 const BINARY = /\.(png|jpg|jpeg|gif|webp|zip|ico)$/i;
 
 function collect(dir, base, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (SKIP_DIRS.has(entry.name)) continue;
+    if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) { collect(full, base, out); continue; }
     out.push({ full, name: 'agent-orchestra/' + relative(base, full).split(/[\\/]/).join('/') });

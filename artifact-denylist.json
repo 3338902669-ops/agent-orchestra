@@ -1,0 +1,8 @@
+{
+  "note": "Checked by scripts/check-artifact.mjs. This file is EXCLUDED from the published artifact (see scripts/build-release.mjs) - a checker shipped to buyers must not itself name the repository it is protecting.",
+  "forbidden": [
+    "3338902669",
+    "3338902669-ops.github.io",
+    "github.com/3338902669-ops"
+  ]
+}

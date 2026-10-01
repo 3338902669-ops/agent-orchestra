@@ -475,6 +475,19 @@
       "pinnedBy": [
         "gate:a shipped file reverts to CRLF"
       ]
+    },
+    {
+      "id": "G4",
+      "contract": "Gate",
+      "requirement": "The published artifact MUST be LF-clean, executable, complete, and MUST NOT name the repository",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/check-artifact.mjs"
+      ],
+      "pinnedBy": [
+        "step:artifact"
+      ],
+      "note": "Pinned by the checker's own negative self-test rather than a test-suite name: it builds the artifact, then builds one from a copy of the tree with the address pasted into a shipped file, and requires the second to be refused."
     }
   ]
 }

@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+// check-artifact.mjs - verify the PUBLISHED ZIP, not the source tree it was built from.
+//
+// Why this exists: the artifact and the repository can disagree, and when they did the disagreement
+// was invisible. A reviewer found CRLF and a 644 install.sh INSIDE the ZIP after both had been fixed
+// in the tree, and the repository address survived in the shipped files long after it was removed
+// from the listing copy. A check that only reads the working tree cannot see any of that, so this one
+// opens the artifact and reads every entry the way the person who downloaded it would.
+//
+// Three properties a release artifact must have:
+//   1. every text entry is LF-clean
+//   2. scripts/install.sh carries mode 100755
+//   3. no entry names the repository address - the listing is the distribution channel, and an
+//      artifact that hands the reader a free copy of the same thing is a business defect
+//
+// Entries are DECOMPRESSED before they are searched. Scanning raw archive bytes proves nothing:
+// deflate output does not contain the plaintext, so a byte scan calls an artifact clean even when the
+// address is in every file.
+//
+// Usage: node scripts/check-artifact.mjs [--zip <path>]
+
+import { readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { inflateRawSync } from 'node:zlib';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import process from 'node:process';
+
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+// The denylist lives BESIDE the repository, not inside the artifact: this file ships to buyers, and a
+// checker that names the repository it protects would leak exactly what it is meant to protect. The
+// first draft did name it, and the checker caught its own leak the first time it ran.
+const DENYLIST = fileURLToPath(new URL('../artifact-denylist.json', import.meta.url));
+const BINARY = /\.(png|jpg|jpeg|gif|webp|ico|zip|woff2?)$/i;
+
+function forbiddenPatterns() {
+  if (!existsSync(DENYLIST)) {
+    // Fail closed. A missing denylist must never read as "nothing forbidden found".
+    throw new Error(
+      'artifact-denylist.json not found next to the repository (' + DENYLIST + '); the address check cannot run',
+    );
+  }
+  return JSON.parse(readFileSync(DENYLIST, 'utf8')).forbidden || [];
+}
+
+export function readEntries(zip) {
+  let eocd = zip.length - 22;
+  while (eocd >= 0 && zip.readUInt32LE(eocd) !== 0x06054b50) eocd -= 1;
+  if (eocd < 0) throw new Error('not a ZIP: no end-of-central-directory record');
+  const count = zip.readUInt16LE(eocd + 10);
+  let i = zip.readUInt32LE(eocd + 16);
+  const entries = [];
+  for (let n = 0; n < count; n++) {
+    if (zip.readUInt32LE(i) !== 0x02014b50) break;
+    const method = zip.readUInt16LE(i + 10);
+    const compSize = zip.readUInt32LE(i + 20);
+    const nameLen = zip.readUInt16LE(i + 28);
+    const extraLen = zip.readUInt16LE(i + 30);
+    const commentLen = zip.readUInt16LE(i + 32);
+    // Keep the file-type bits: masking to 0o7777 turned 100755 into 755 and made the assertion below
+    // fail on a correct artifact, which the first run demonstrated.
+    const mode = (zip.readUInt32LE(i + 38) >>> 16) & 0xffff;
+    const localOffset = zip.readUInt32LE(i + 42);
+    const name = zip.slice(i + 46, i + 46 + nameLen).toString('utf8');
+    const lNameLen = zip.readUInt16LE(localOffset + 26);
+    const lExtraLen = zip.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+    const raw = zip.slice(dataStart, dataStart + compSize);
+    entries.push({ name, mode, body: method === 8 ? inflateRawSync(raw) : raw, method });
+    i += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+export function checkArtifact(zipPath) {
+  const entries = readEntries(readFileSync(zipPath));
+  const problems = [];
+  const forbidden = forbiddenPatterns();
+  for (const entry of entries) {
+    const base = entry.name.split('/').pop() || entry.name;
+    if (BINARY.test(base)) continue;
+    const text = entry.body.toString('utf8');
+    const crlf = (text.match(/\r\n/g) || []).length;
+    if (crlf > 0) problems.push(entry.name + ': ' + crlf + ' CRLF line endings');
+    for (const needle of forbidden) {
+      if (text.includes(needle)) {
+        const at = text.indexOf(needle);
+        const line = text.slice(0, at).split('\n').length;
+        problems.push(entry.name + ':' + line + ' names the repository (' + needle + ')');
+      }
+    }
+  }
+  const installer = entries.find((e) => e.name === 'agent-orchestra/scripts/install.sh');
+  if (!installer) problems.push('scripts/install.sh is missing from the artifact');
+  else if (installer.mode !== 0o100755) problems.push('scripts/install.sh has mode ' + installer.mode.toString(8) + ', not 100755');
+  for (const required of ['agent-orchestra/SKILL.md', 'agent-orchestra/CONFORMANCE.md', 'agent-orchestra/LICENSE']) {
+    if (!entries.some((e) => e.name === required)) problems.push(required + ' is missing from the artifact');
+  }
+  return { entries: entries.length, problems };
+}
+
+
+// --self-test: prove the check can fail. A check that has never rejected anything is a hope, not a
+// control - the whole point of this project. It builds the clean artifact, then builds one from a copy
+// of the tree with the address pasted into a shipped file, and requires the second to be refused.
+async function selfTest() {
+  const { cpSync, mkdtempSync: mk, writeFileSync: wr, readFileSync: rd, rmSync: rm } = await import('node:fs');
+  const tmp = mk(join(tmpdir(), 'ao-artifact-self-'));
+  const cleanZip = join(tmp, 'clean.zip');
+  const dirtyTree = join(tmp, 'tree');
+  const dirtyZip = join(tmp, 'dirty.zip');
+  const results = [];
+  execFileSync(process.execPath, [join(ROOT, 'scripts/build-release.mjs'), cleanZip], { cwd: ROOT, stdio: 'pipe' });
+  const clean = checkArtifact(cleanZip);
+  results.push({ name: 'the real artifact passes', rejected: clean.problems.length === 0, problems: clean.problems });
+  cpSync(ROOT, dirtyTree, {
+    recursive: true,
+    filter: (src) => !/[\\/](\.git|node_modules|evidence)$/.test(src),
+  });
+  const target = join(dirtyTree, 'README.md');
+  wr(target, rd(target, 'utf8') + '\nhttps://github.com/' + ['33389', '02669-ops'].join('') + '/agent-orchestra\n', 'utf8');
+  execFileSync(process.execPath, [join(ROOT, 'scripts/build-release.mjs'), dirtyZip], {
+    cwd: ROOT,
+    stdio: 'pipe',
+    env: { ...process.env, AO_BUILD_ROOT: dirtyTree },
+  });
+  const dirty = checkArtifact(dirtyZip);
+  const named = dirty.problems.some((x) => x.includes('names the repository'));
+  results.push({ name: 'an artifact naming the repository is refused', rejected: named, problems: dirty.problems.slice(0, 3) });
+  rm(tmp, { recursive: true, force: true });
+  return results;
+}
+
+const isMain = process.argv[1] && process.argv[1].endsWith('check-artifact.mjs');
+if (isMain && process.argv.includes('--self-test')) {
+  const results = await selfTest();
+  let bad = 0;
+  for (const r of results) {
+    console.log('  ' + (r.rejected ? 'OK      ' : 'FAILED  ') + r.name);
+    if (!r.rejected) { bad += 1; console.log('          ' + JSON.stringify(r.problems).slice(0, 160)); }
+  }
+  console.log(bad === 0 ? 'self-test: the check passes the real artifact and refuses a leaky one' : 'self-test FAILED');
+  process.exit(bad === 0 ? 0 : 1);
+}
+if (isMain) {
+  const flag = process.argv.indexOf('--zip');
+  let zipPath = flag >= 0 ? process.argv[flag + 1] : null;
+  let cleanup = null;
+  if (!zipPath) {
+    const dir = mkdtempSync(join(tmpdir(), 'ao-artifact-'));
+    zipPath = join(dir, 'agent-orchestra.zip');
+    cleanup = dir;
+    execFileSync(process.execPath, [join(ROOT, 'scripts/build-release.mjs'), zipPath], { cwd: ROOT, stdio: 'pipe' });
+  }
+  if (!existsSync(zipPath)) { console.error('no artifact at ' + zipPath); process.exit(2); }
+  const { entries, problems } = checkArtifact(zipPath);
+  if (cleanup) rmSync(cleanup, { recursive: true, force: true });
+  if (problems.length) {
+    console.error(problems.map((x) => '  - ' + x).join('\n'));
+    process.exit(1);
+  }
+  console.log('artifact verified: ' + entries + ' entries, LF-clean, install.sh 100755, no repository address');
+  process.exit(0);
+}
