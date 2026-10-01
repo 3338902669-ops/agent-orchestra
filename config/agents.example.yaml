@@ -131,8 +131,8 @@ activation:
     # it) - and a false veto is not a downgrade, it is a SILENT MISS of a real request, which is the
     # worst outcome this filter can produce. Multi-character markers keep the comparison meaning
     # (比较/对比/评测/排名/选哪个/谁更) without swallowing the coordination vocabulary.
-    # Markers that mean "this sentence is not a request to coordinate": comparison (比/评/排/选/谁/孰/
-    # 哪/vs/compare...), evaluation (区别/差异/优缺点/利弊/好处/坏处/还是/推荐), question
+    # Markers that mean "this sentence is not a request to coordinate": comparison (比较/对比/评测/
+    # 排名/选哪个/谁更/vs/compare...), evaluation (区别/差异/优缺点/利弊/好处/坏处/还是/推荐), question
     # (什么/如何/为什么/吗/是什么) and content production (文章/报告/调研/教程). Any of them downgrades
     # a keyword hit to POSSIBLE. The list only has to catch markers that appear NEXT TO a coordination
     # act - the language-open cases ("what is multi-agent", "multi-agent 是个啥") are already handled by
