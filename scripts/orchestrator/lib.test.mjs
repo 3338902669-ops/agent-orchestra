@@ -28,6 +28,7 @@ import {
   createTask,
   nextDispatch,
   recoverTask,
+  shellQuote,
   verifierFor,
 } from './lib.mjs';
 
@@ -294,6 +295,40 @@ test('dispatch is a dry run and never claims to execute', () => {
   assert.equal(typeof dispatch.command, 'string');
   assert.ok(dispatch.command.length > 0);
   assert.match(dispatch.command, /^agent-run --headless /);
+});
+
+test('the dispatch record carries an argv array, not only a shell string', () => {
+  const r = createOne({ title: 'argv-form' });
+  const dispatch = nextDispatch(r.state, r.task.id);
+  assert.ok(Array.isArray(dispatch.argv));
+  assert.equal(dispatch.argv[0], 'agent-run');
+  assert.equal(dispatch.argv[1], '--headless');
+  assert.equal(dispatch.argv.length, 3);
+  assert.equal(dispatch.command, `agent-run --headless ${shellQuote(dispatch.argv[2])}`);
+  // The prompt embeds an apostrophe ("task's"), so the rendered line must escape it
+  // rather than end the quoted region early.
+  assert.ok(dispatch.command.includes("'\\''"), 'embedded quotes are escaped');
+});
+
+test('shell metacharacters in free-form task text stay inside a quoted argument', () => {
+  // Regression: the dispatch line used to be built with JSON.stringify, which leaves
+  // $(...), backticks, ${...} and ! live inside double quotes. The printed line is
+  // meant to be pasted into a shell, so that was command execution.
+  const r = createOne({ title: 'Fix $(touch pwned) `id` ${HOME} !boom' });
+  const dispatch = nextDispatch(r.state, r.task.id);
+  const prompt = dispatch.argv[dispatch.argv.length - 1];
+  assert.ok(prompt.includes('$(touch pwned)'), 'argv keeps the raw text');
+  assert.ok(prompt.includes('`id`'));
+  assert.match(dispatch.command, /^agent-run --headless '/);
+  const outsideQuoted = dispatch.command.replace(/'[^']*'/g, '');
+  assert.ok(!/[$\`!]/.test(outsideQuoted), 'no live substitution outside quotes: ' + outsideQuoted);
+});
+
+test('shellQuote escapes embedded single quotes instead of breaking out', () => {
+  assert.equal(shellQuote("a'b"), "'a'\\''b'");
+  assert.equal(shellQuote('safe-token_1.2:3'), 'safe-token_1.2:3');
+  assert.equal(shellQuote(''), "''");
+  assert.equal(shellQuote('x; rm -rf /'), "'x; rm -rf /'");
 });
 
 test('the prompt carries task, workspace, boundary and evidence fields', () => {

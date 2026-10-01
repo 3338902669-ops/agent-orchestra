@@ -86,7 +86,9 @@ risk:
 roles:
   coordinator: { required: true, min_score: 1 }
   implementer: { required_for: [build, fix, migrate] }
-  verifier: { required_for: [important, critical], independent: true }   # verifier != implementer, always
+  verifier:
+    required_for: [important, critical]
+    independent: true        # verifier != implementer, always
   environment_specialist: { required_for: [environment_failure] }
   domain_reviewer: { required_for: [critical] }
 

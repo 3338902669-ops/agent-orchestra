@@ -66,7 +66,8 @@ Create flags: `--title` (required), `--type`, `--capability`, `--workspace`,
 | `taskId` | task being dispatched |
 | `agent` / `phase` / `capability` | who should act, at which stage, with which label |
 | `execute` | always `false` in this port |
-| `command` | dry-run command text built from `COMMAND_TEMPLATES` (placeholder runner) |
+| `command` | dry-run command text built from `COMMAND_TEMPLATES`, rendered with POSIX single-quote escaping |
+| `argv` | the same command as an argument array — hand this to a process API instead of pasting `command` into a shell |
 | `requiresCoordinatorCoordination` | `true` when the owner is the `generalist` role |
 | `requiresHumanCoordination` | always `false`; a constant kept for callers |
 | `externalActionApproved` | `null` when the task has no external action, else the approval state |
@@ -75,6 +76,11 @@ Create flags: `--title` (required), `--type`, `--capability`, `--workspace`,
 
 - **No process is ever started.** `lib.mjs` and `orchestrator.mjs` import no
   `child_process`; `dispatch` only renders text. The suite asserts this.
+- **Free-form task text is never interpolated into a live shell string.** Titles and
+  workspaces reach the prompt as raw text, the record carries an `argv` array, and the
+  printable `command` is built with POSIX single-quote escaping (`shlex.quote` rule),
+  not `JSON.stringify` — a JSON encoder leaves `$(...)`, backticks, `${...}` and `!`
+  executable when the line is pasted. The suite has a regression test for this.
 - **Non-dispatchable tasks fail closed.** `done`, `blocked`, locked, agent-less or
   command-less tasks make `dispatch` throw and the CLI exit **1** — it never exits 0 to
   pretend the dispatch succeeded.

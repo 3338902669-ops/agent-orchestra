@@ -53,12 +53,38 @@ const ROUTES = Object.freeze({
 });
 
 // Dry-run command templates. These are PLACEHOLDERS: swap `agent-run` for your own
-// runner. The orchestrator only ever renders the text — it never executes it.
+// runner. Each template returns an ARGV ARRAY, never a shell string: task titles and
+// workspaces are free-form text, and JSON.stringify is a JSON encoder, not a shell
+// quoter (it leaves `$(...)`, backticks, `${...}` and `!` live inside double quotes).
 export const COMMAND_TEMPLATES = Object.freeze({
-  generalist: (prompt) => `agent-run --headless ${JSON.stringify(prompt)}`,
-  frontend:   (prompt) => `agent-run --profile frontend ${JSON.stringify(prompt)}`,
-  specialist: (prompt) => `agent-run --profile specialist ${JSON.stringify(prompt)}`,
+  generalist: (prompt) => ['agent-run', '--headless', prompt],
+  frontend:   (prompt) => ['agent-run', '--profile', 'frontend', prompt],
+  specialist: (prompt) => ['agent-run', '--profile', 'specialist', prompt],
 });
+
+/** Characters that need no quoting in a POSIX shell. */
+const SHELL_SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+/**
+ * Quote one value for a POSIX shell. Values made only of safe characters pass
+ * through unchanged so the printed command stays readable; everything else is
+ * wrapped in single quotes with embedded single quotes escaped as '\''.
+ * This is the shlex.quote rule, not JSON.stringify: JSON leaves $(...), backticks,
+ * ${...} and ! live inside its double quotes, which is how a free-form task title
+ * becomes command execution when the printed line is pasted into a shell.
+ * Prefer the argv array when you can — it needs no quoting at all.
+ */
+export function shellQuote(value) {
+  const text = String(value);
+  if (text === '') return "''";
+  if (SHELL_SAFE.test(text)) return text;
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Render an argv array as a POSIX shell command line. Display only — prefer argv. */
+export function renderCommand(argv) {
+  return argv.map(shellQuote).join(' ');
+}
 
 function copy(value) {
   return structuredClone(value);
@@ -136,7 +162,9 @@ function agentCommand(task) {
     'Headless workers: before editing, state the allowed write paths; run the stated verification commands; write the machine-readable JSON result; and report changed files, commands, exit codes, evidence, and unresolved items.',
   ].join(' ');
   const template = COMMAND_TEMPLATES[task.assignedAgent];
-  return template ? template(prompt) : null;
+  if (!template) return null;
+  const argv = template(prompt);
+  return { argv, command: renderCommand(argv) };
 }
 
 /** A fresh, empty orchestrator state. */
@@ -316,15 +344,18 @@ export function nextDispatch(state, id) {
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot be dispatched`);
   if (task.lock) throw new Error(`Task ${id} is already held by ${task.lock.owner}`);
   if (!task.assignedAgent) throw new Error(`Task ${id} has no assigned agent; cannot dispatch`);
-  const command = agentCommand(task);
-  if (!command) throw new Error(`Task ${id} has no dispatch command for agent ${task.assignedAgent}`);
+  const rendered = agentCommand(task);
+  if (!rendered) throw new Error(`Task ${id} has no dispatch command for agent ${task.assignedAgent}`);
   return {
     taskId: id,
     agent: task.assignedAgent,
     phase: task.phase,
     capability: task.capability,
     execute: false,
-    command,
+    // argv is the safe form: hand it to a process API. command is the same thing
+    // rendered for display with POSIX single-quote escaping.
+    command: rendered.command,
+    argv: rendered.argv,
     requiresHumanCoordination: false,
     requiresCoordinatorCoordination: task.assignedAgent === 'generalist',
     externalActionApproved: canRunExternalAction(state, id),
