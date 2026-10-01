@@ -93,6 +93,15 @@ Neither point is bypassed by status alone: a queue edited by hand into `evidence
 8. Never edit a resource whose lock is held by another agent, including "small fixes" and formatting.
 9. The **verification gate** is separate from the `blocked` status: after a failed verification the task is `queued` at `implement` and can be claimed normally, but it cannot be dispatched to `evidence` or completed to `done` until the gate reopens (section 3.1).
 
+The list above is the **claim lock**: one writer per task. A second lock protects the
+**state file** itself. Every CLI command takes an exclusive `<queue>.lock` file, writes
+through a temp file and renames it over the queue, then releases the lock. Concurrent
+invocations therefore serialise instead of racing — without it, two processes read the same
+revision and the later write silently discards the earlier one (a lost task, an overwritten
+evidence entry). A second writer waits briefly and then fails with `locked by another
+process` rather than overwriting, and a lock left behind by a crashed process is taken over
+once it is stale (10 seconds), so a crash cannot wedge the queue.
+
 ## 5. Capability tags and default routing
 
 A task carries a capability tag that selects the routing chain. The tag is derived from the task type unless given explicitly.

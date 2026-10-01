@@ -108,6 +108,13 @@ failed gate, and it needs `--by`, `--scope` **and** `--reason`.
   so the failure is never erased.
 - **One writer per task.** `claim` takes an exclusive lock; a second agent is rejected
   until the stage completes or `recover` clears a stranded lock.
+- **One writer per queue.** Concurrent invocations are serialised by an exclusive
+  `<queue>.lock` file (created with `wx`, so check-and-create is atomic), and every write
+  goes through a temp file plus `rename()`. Without that, two processes both read the same
+  revision and the later write silently discards the earlier one - a lost task or an
+  overwritten evidence entry. A second writer waits briefly or fails with
+  `locked by another process`; a lock left by a crashed process is taken over once it is
+  stale (10s), so the queue never wedges. `ORCHESTRATOR_LOCK_WAIT_MS` tunes the wait.
 - **External actions need an explicit approval record.** A task created with
   `--external-action <kind>` starts with `approved: false`; only `approve --by <who>
   --scope <what>` unblocks it. The command templates carry the same rule into the prompt.

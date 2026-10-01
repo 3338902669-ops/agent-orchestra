@@ -10,12 +10,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, utimesSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 
 import {
   AGENTS,
   CAPABILITIES,
   DEFAULT_START_CHOICES,
+  EVIDENCE_GRADES,
+  RIGOR_LEVELS,
   STAGES,
   STATE_VERSION,
   TYPES,
@@ -503,6 +509,147 @@ for (const file of RUNTIME_SOURCES) {
   });
 }
 
+
+// ── concurrency: two writers at once ─────────────────────────────────────────
+
+// ── rigor: how much verification a change carries ─────────────────────────────────────
+
+/** Drive a task from its current phase to done, optionally supplying evidence at the last step. */
+function driveToDone(state, id, evidence) {
+  let current = state;
+  for (let i = 0; i < 10; i++) {
+    const task = current.tasks[id];
+    if (task.phase === 'done') return current;
+    const agent = task.assignedAgent;
+    current = claimTask(current, id, agent).state;
+    const atEvidence = current.tasks[id].phase === 'evidence';
+    current = completeStage(current, id, agent, atEvidence && evidence ? { evidence } : {}).state;
+  }
+  throw new Error('task did not reach done: ' + current.tasks[id].phase);
+}
+
+test('rigor defaults to L2 and must be a level the engine accepts', () => {
+  const state = createState();
+  assert.equal(createTask(state, { title: 'defaulted' }).task.rigor, 'L2');
+  for (const level of RIGOR_LEVELS) {
+    assert.equal(createTask(state, { title: 'r-' + level, rigor: level }).task.rigor, level);
+  }
+  assert.throws(() => createTask(state, { title: 'bad', rigor: 'L9' }), /Invalid rigor/);
+});
+
+test('an external action can never be filed as L1 (local)', () => {
+  const state = createState();
+  assert.throws(
+    () => createTask(state, { title: 'deploy', rigor: 'L1', externalAction: 'deploy' }),
+    /cannot be L1/,
+  );
+  const ok = createTask(state, { title: 'deploy', rigor: 'L3', externalAction: 'deploy', important: true,
+    executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
+  assert.equal(ok.task.rigor, 'L3');
+});
+
+test('a bare evidence string is stored as E3 and labelled, never as E1', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'e3', rigor: 'L1' });
+  const claimed = claimTask(created, task.id, task.assignedAgent).state;
+  const done = completeStage(claimed, task.id, task.assignedAgent, { evidence: 'looks fine to me' }).state;
+  const record = done.tasks[task.id].evidence.at(-1);
+  assert.equal(record.grade, 'E3');
+  assert.match(record.note, /downgraded to E3/);
+  assert.equal(record.text, 'looks fine to me');
+});
+
+test('E1 evidence must carry the command, the exit code and the revision', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'e1', rigor: 'L1' });
+  const claimed = claimTask(created, task.id, task.assignedAgent).state;
+  const partial = { grade: 'E1', text: 'tests pass', command: 'npm test' }; // no exitCode, no revision
+  assert.throws(
+    () => completeStage(claimed, task.id, task.assignedAgent, { evidence: partial }),
+    /E1 evidence must carry exitCode, revision/,
+  );
+  const full = { grade: 'E1', text: 'tests pass', command: 'npm test', exitCode: 0, revision: 'abc123' };
+  const done = completeStage(claimed, task.id, task.assignedAgent, { evidence: full }).state;
+  assert.equal(done.tasks[task.id].evidence.at(-1).grade, 'E1');
+  assert.equal(done.tasks[task.id].evidence.at(-1).exitCode, 0);
+});
+
+test('an L3 task cannot reach done without E1 evidence', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'consequential', rigor: 'L3' });
+  // Self-report only: the last step must refuse.
+  assert.throws(() => driveToDone(created, task.id, 'I checked it'), /cannot reach done without E1 evidence/);
+  // With a reproducible artifact it goes through.
+  const finished = driveToDone(created, task.id, {
+    grade: 'E1', text: 'gate evidence', command: 'node scripts/gate.mjs', exitCode: 0, revision: 'abc123',
+  });
+  assert.equal(finished.tasks[task.id].phase, 'done');
+  assert.ok(EVIDENCE_GRADES.includes(finished.tasks[task.id].evidence.at(-1).grade));
+});
+
+function runCli(cliPath, stateFile, args, extraEnv = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [cliPath, ...args], {
+      env: { ...process.env, ORCHESTRATOR_STATE: stateFile, ...extraEnv },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => { out += String(d); });
+    child.stderr.on('data', (d) => { err += String(d); });
+    child.on('close', (code) => resolve({ code, out, err }));
+  });
+}
+
+test('four concurrent creates: every task survives (no lost update)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-orchestra-'));
+  const stateFile = join(dir, 'queue.json');
+  const cli = fileURLToPath(new URL('./orchestrator.mjs', import.meta.url));
+
+  const init = await runCli(cli, stateFile, ['init']);
+  assert.equal(init.code, 0, init.err);
+
+  // All four processes read the same revision and then try to write. Without the
+  // read-modify-write lock they all allocate task-0001 and three writes are lost.
+  const results = await Promise.all(
+    [1, 2, 3, 4].map((n) => runCli(cli, stateFile, ['create', '--title', 'race-' + n, '--type', 'build'])),
+  );
+  const failures = results.filter((r) => r.code !== 0).map((r) => r.err.trim());
+  assert.deepEqual(failures, [], 'every concurrent create should succeed: ' + JSON.stringify(failures));
+
+  const final = JSON.parse(readFileSync(stateFile, 'utf8'));
+  assert.deepEqual(Object.keys(final.tasks).sort(), ['task-0001', 'task-0002', 'task-0003', 'task-0004']);
+  assert.equal((final.events ?? []).filter((e) => e.type === 'created').length, 4);
+  assert.equal(final.nextTaskNumber, 5);
+
+  // Atomic write + lock leave nothing behind.
+  assert.deepEqual(readdirSync(dir).sort(), ['queue.json']);
+});
+
+test('the lock refuses a second writer, and a stale lock is recovered', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-orchestra-'));
+  const stateFile = join(dir, 'queue.json');
+  const lockFile = stateFile + '.lock';
+  const cli = fileURLToPath(new URL('./orchestrator.mjs', import.meta.url));
+  const fast = { ORCHESTRATOR_LOCK_WAIT_MS: '300' };
+  await runCli(cli, stateFile, ['init']);
+
+  // A fresh lock (another process may be mid-write) makes this command refuse to write.
+  writeFileSync(lockFile, 'someone-else\n', 'utf8');
+  const blocked = await runCli(cli, stateFile, ['create', '--title', 'blocked', '--type', 'build'], fast);
+  assert.equal(blocked.code, 1);
+  assert.match(blocked.err, /locked by another process/);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(stateFile, 'utf8')).tasks), []);
+
+  // A lock left by a crashed process is stolen once it is stale, so it never wedges.
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(lockFile, old, old);
+  const recovered = await runCli(cli, stateFile, ['create', '--title', 'after-crash', '--type', 'build'], fast);
+  assert.equal(recovered.code, 0, recovered.err);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(stateFile, 'utf8')).tasks), ['task-0001']);
+  assert.deepEqual(readdirSync(dir).sort(), ['queue.json']);
+});
+
 test('the CLI resolves the queue file relative to the module', () => {
   const src = readFileSync(new URL('orchestrator.mjs', import.meta.url), 'utf8');
   assert.match(src, /new URL\('TASK-QUEUE\.json', import\.meta\.url\)/);
@@ -692,4 +839,3 @@ test('a clean run passes the gate with no override', () => {
   assert.equal(task.verification.override, null);
   assert.equal(task.verification.attempts, 1);
 });
-

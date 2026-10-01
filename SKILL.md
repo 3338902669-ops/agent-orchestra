@@ -103,6 +103,26 @@ One agent may hold several roles on **routine** work only. Important work requir
 
 See `references/roles.md` and `references/routing-and-roles.md`.
 
+## Rigor: how much verification this change has to carry
+
+Rigor is chosen from the **blast radius** of the change, not from how interesting it is, and it
+decides which activities are mandatory - the way an integrity level selects V&V tasks in
+IEEE 1012. State it; do not infer it. The engine stores it per task (`--rigor`) and enforces it.
+
+| Level | Applies when | Mandatory |
+|---|---|---|
+| **L1 local** | one file, no shared interface, reversible | tests for the change; self-produced evidence allowed (never E1) |
+| **L2 shared** (default) | multiple files, shared config, or user-visible behaviour | verifier must differ from the implementer; positive **and** negative cases; evidence graded E1 or E2 |
+| **L3 consequential** | irreversible, published, deployed, or touching credentials/permissions | independent verification, a machine-produced artifact, an approval record (approver + scope + reason), **E1 evidence**, and a kept failure record |
+
+Two rules the engine enforces rather than trusting: an **external action can never be filed as
+L1** (it leaves the machine), and an **L3 task cannot reach `done` without E1 evidence** - a
+command, its exit code and the revision it applies to.
+
+> 中文：严格度按**影响面**选，不按兴趣选，而且必须写明、不能靠猜。L1 可自检；L2 必须异体验证 + 正反用例；L3 必须有独立核验、机器产物、审批记录（署名+范围+理由）、**E1 证据**并保留失败记录。外部动作永远不能填 L1；L3 没有 E1 证据到不了 done。
+
+See `references/verification-standard.md` for the ten requirements this is derived from.
+
 ## Verification gate
 
 Verification is a gate in the same sense as a security scan, except it is run by **an agent from your own team, chosen for the job** - no external tool and no particular vendor is required:
@@ -164,7 +184,13 @@ See `references/task-queue.md` and `scripts/orchestrator/README.md`.
 
 Never let E3 speak in E1's voice. Same-system peer checks are not independent verification. Grades do not survive a revision change: after an edit, a resumed session or context compaction, re-verify before restating an old "verified".
 
-See `references/evidence-grading.md`.
+The engine enforces this rather than trusting the wording: a bare string handed to
+`complete --evidence "..."` is stored as **E3 with a note saying it was downgraded**, and
+`--evidence-grade E1` is refused unless it also carries `--evidence-command`,
+`--evidence-exit-code` and `--evidence-revision`. Grade labels are not decoration - an
+ungraded sentence cannot borrow E1's voice because it is not allowed to carry the label.
+
+See `references/evidence-grading.md` and `references/verification-standard.md`.
 
 ## Token and cost policy
 

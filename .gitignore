@@ -1,0 +1,3 @@
+
+# Per-run gate evidence (machine-readable; regenerate with: node scripts/gate.mjs)
+evidence/

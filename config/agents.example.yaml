@@ -9,46 +9,59 @@ minimum_agents_for_auto_routing: 3
 #   manual  -> engaged only when the user explicitly invokes it (most economical)
 activation:
   mode: keyword
-  match: any            # any = one keyword hit enables; all = every keyword must hit
+  match: any            # any = one signal enables; all = every keyword and pattern must hit
   case_sensitive: false
+  # Plain substrings. Keep them UNAMBIGUOUS. A generic word that also appears in ordinary
+  # requests ("编排" for k8s, "验收" for a QA report, "分工" for people, "verifier" for a
+  # function parameter) causes false activation, and engaging on the wrong task is worse
+  # than not engaging at all.
   keywords:
     - multi-agent
     - multi agent
+    - multiagent
     - multiple agents
-    - orchestration
+    - agent orchestration
+    - orchestration of agents
     - coordinate agents
-    - role assignment
     - single-writer
     - single writer
-    - token efficiency
-    - token cost
-    - important task
-    - critical task
     - independent verification
-    - verifier
-    - task queue
+    - verifier agent
     - handoff
+    - agent handoff
     - 多agent
     - 多 agent
-    - 多个agent
     - 多代理
+    - 多智能体
+    - agent协作
+    - 智能体协作
     - 协作
-    - 分工
-    - 分配任务
-    - 编排
-    - 重要任务
-    - 关键任务
-    - 独立复核
-    - 独立核验
     - 交接
-    - 接力
+    - 接力干活
     - 换助手
     - 交接班
-    - 验收
-    - 节省token
+    - 独立核验
+    - 独立复核
+    - 单写入者
+    - 重要任务
+    - 关键任务
     - 省token
-    - 成本优化
-  exclude_keywords:     # if any of these appear, do NOT engage (even if keywords hit)
+    - 节省token
+  # Regular expressions for INTENT and spoken variants. These are what make the skill engage
+  # on how a person describes the problem ("两个 AI 改同一个文件") instead of on the
+  # vocabulary the skill itself uses. Deliberately single-quoted so YAML leaves the
+  # backslashes alone.
+  patterns:
+    - '(多|几|两|三|四|五|六|\d+)\s*个?\s*(ai|agent|代理|助手|智能体|机器人|模型)'
+    - '(ai|agent|代理|助手|智能体)[^。！？,.，]{0,12}(一起|同时|共同|协同|配合)'
+    - '(换个?|再换个?|换一?个)\s*(助手|ai|agent|代理|模型|工具)'
+    - '(互相|相互|彼此)\s*(覆盖|冲突|打架|撞车|改乱)'
+    - '同一个文件|同一份文件'
+    - '(同时|并行)\s*(改|写|编辑|动)'
+    - '(agent|ai|代理|助手|智能体)[^。！？,.，]{0,10}(编排|分工|分配|调度|协同)'
+    - '(独立|交叉|第三方|外部|另一个)\s*(核验|验证|复核|复验|检验|审查|签名)'
+    - '(冲突|覆盖)(了|的)?\s*(代码|改动|文件|修改)'
+  exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊
     - 随便聊聊
@@ -60,12 +73,15 @@ state:
 # ---- Intake gate: ask before the first write/dispatch/verification of an important task ----
 # Never default these on the user's behalf. The gate decides HOW work is coordinated;
 # it does not authorize irreversible actions.
+# The values below are the ENGINE's vocabulary, not a yes/no phrasing: the queue stores
+# "planned" | "skip" (a planned scan is not a started scan) and "single" | "collaborative".
+# Ask the user in plain words; record the mechanical value.
 intake_gate:
   required_for: [important, critical]
   questions:
     - execution_mode: [single, collaborative]
-    - security_scan: [yes, no]
-    - independent_verification: [yes, no]
+    - security_scan: [planned, skip]
+    - independent_verification: [planned, skip]
   record_to: shared task record AND task.startChoices
 
 risk:
@@ -169,8 +185,22 @@ verification_gate:
   override_is_not_evidence: true           # an override is a decision, not a passing verification
 
 
+# ---- Rigor: how much verification a change carries, chosen from its blast radius ----
+# The engine stores this per task (create --rigor). The values below are the engine's
+# vocabulary; see references/verification-standard.md for why the levels exist.
+rigor:
+  default: L2
+  levels:
+    - { id: L1, name: local,         requires: [tests_for_the_change] }
+    - { id: L2, name: shared,        requires: [tests_for_the_change, independent_verifier, negative_cases] }
+    - { id: L3, name: consequential, requires: [independent_verifier, machine_produced_artifact, approval_record, e1_evidence, kept_failure_record] }
+  irreversible_requires: L3         # an external action can never be filed as local
+
 evidence:
-  grading: [E1_reproducible, E2_peer_check, E3_self_assertion, E4_planned]
+  # The engine's grade enum, not a description of it. A bare string is stored as E3 and
+  # labelled, so self-report can never be mistaken for a reproducible result.
+  grading: [E1, E2, E3, E4]
+  e1_requires: [command, exitCode, revision]
   require_grade_label: true
   re_verify_after_context_compaction: true
   forbidden_phrasings:

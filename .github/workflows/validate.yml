@@ -15,48 +15,17 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
-      - name: Validate orchestration config
-        run: node scripts/validate-config.mjs config/agents.example.yaml
-      - name: Check JSON examples parse
-        run: node -e "JSON.parse(require('fs').readFileSync('examples/important-task.json','utf8')); JSON.parse(require('fs').readFileSync('references/agent-manifest.schema.json','utf8')); console.log('JSON OK')"
-      - name: Check SKILL.md frontmatter
-        run: |
-          node -e 'const fs=require("fs");const p="SKILL.md";const t=fs.readFileSync(p,"utf8");if(!/^---\n[\s\S]*?name:\s*\S+[\s\S]*?description:\s*\S+[\s\S]*?\n---/.test(t)){throw new Error("invalid frontmatter: "+p)}console.log("frontmatter OK: "+p)'
-      - name: Keyword trigger detector smoke test
-        run: |
-          node scripts/detect-trigger.mjs --text "we need multi-agent orchestration" && echo "expected ENGAGED" || (echo "expected ENGAGED but got exit $?"; exit 1)
-          node scripts/detect-trigger.mjs --text "just a question" && (echo "expected NOT_ENGAGED"; exit 1) || echo "expected NOT_ENGAGED"
-      - name: Task queue tests
-        run: node --test scripts/orchestrator/lib.test.mjs
-      - name: Verification gate smoke test
-        run: |
-          set -e
-          export ORCHESTRATOR_STATE="$(mktemp -d)/queue.json"
-          o() { node scripts/orchestrator/orchestrator.mjs "$@" > /dev/null; }
-          o init
-          o create --title gate --type build
-          o claim --task task-0001 --agent generalist
-          o complete --task task-0001 --agent generalist
-          o claim --task task-0001 --agent generalist
-          o complete --task task-0001 --agent generalist
-          o claim --task task-0001 --agent specialist
-          o fail --task task-0001 --agent specialist --criteria "acceptance test fails"
-          node -e 'const t=JSON.parse(require("fs").readFileSync(process.env.ORCHESTRATOR_STATE,"utf8")).tasks["task-0001"]; if (t.verification.blocked !== true || t.phase !== "implement") throw new Error("the gate did not close"); console.log("gate closed, task returned to implement")'
-          if node scripts/orchestrator/orchestrator.mjs override --task task-0001 --by user --scope ship 2>/dev/null; then echo "an override without a reason must be refused"; exit 1; fi
-          o override --task task-0001 --by user --scope ship --reason "pre-existing flake"
-          node -e 'const v=JSON.parse(require("fs").readFileSync(process.env.ORCHESTRATOR_STATE,"utf8")).tasks["task-0001"].verification; if (v.override?.reason !== "pre-existing flake" || v.status !== "failed") throw new Error("the override was not recorded next to the failure"); console.log("override recorded, failure kept on the record")'
-
-      - name: Forbid private paths and secrets in shipped files
-        run: |
-          set -e
-          if grep -rInE 'C:\\Users|[A-Za-z]:\\Users|sk-[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY' SKILL.md README.md config references scripts examples; then
-            echo 'found a private path or a secret-looking string'; exit 1
-          fi
-          echo 'no private paths or secrets found'
-      - name: Forbid host-specific product and machine names
-        run: |
-          set -e
-          if grep -rInE 'tianshu|openclaw|rivet|aurevia|morphos|(^|[^a-z])dsh([^a-z]|$)' SKILL.md README.md config references scripts examples; then
-            echo 'found a host-specific product or machine name'; exit 1
-          fi
-          echo 'no host-specific product names found'
+      # One command, one definition of "checked": CI and a local machine run exactly this.
+      # The runner self-tests first (it injects known-bad config and requires rejection), so a
+      # gate that quietly stopped checking anything fails instead of reporting green.
+      - name: Run the gate
+        run: node scripts/gate.mjs --evidence evidence
+      - name: Show the evidence record
+        if: always()
+        run: cat evidence/latest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: gate-evidence
+          path: evidence/latest.json
+          if-no-files-found: warn

@@ -4,6 +4,13 @@
 //   node scripts/detect-trigger.mjs --text "...task text..." [--config config/agents.example.yaml]
 //   echo "text" | node scripts/detect-trigger.mjs [--config ...]
 // Exit code 0 = ENGAGED (skill should be used); exit code 1 = NOT ENGAGED.
+//
+// Matching is deliberately two-tiered, because plain substrings match terminology rather
+// than intent ("k8s 编排" is not multi-agent work, while "两个 AI 改同一个文件" is):
+//   * keywords - unambiguous phrases, matched as substrings;
+//   * patterns - regular expressions for intent and spoken variants, so the skill engages
+//     on how people actually describe the problem rather than on the vocabulary it uses.
+//   * exclude_keywords - a veto that wins over any hit.
 
 import fs from 'node:fs';
 import process from 'node:process';
@@ -23,8 +30,8 @@ function readYamlSection(file) {
   // minimal YAML reader for the activation block only
   const raw = fs.readFileSync(file, 'utf8');
   const lines = raw.split(/\r?\n/);
-  const out = { mode: 'keyword', match: 'any', case_sensitive: false, keywords: [], exclude_keywords: [] };
-  let inActivation = false, inList = null, modeLine = false;
+  const out = { mode: 'keyword', match: 'any', case_sensitive: false, keywords: [], patterns: [], exclude_keywords: [] };
+  let inActivation = false, inList = null;
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed === 'activation:') { inActivation = true; continue; }
@@ -37,31 +44,59 @@ function readYamlSection(file) {
     const m = trimmed.match(/^([a-z_]+):\s*(.*)$/);
     if (!m) continue;
     const key = m[1], val = m[2].replace(/^["']|["']$/g, '');
-    if (key === 'mode') { out.mode = val || 'keyword'; modeLine = true; }
+    if (key === 'mode') out.mode = val || 'keyword';
     else if (key === 'match') out.match = val || 'any';
     else if (key === 'case_sensitive') out.case_sensitive = val === 'true';
     else if (key === 'keywords') inList = 'keywords';
+    else if (key === 'patterns') inList = 'patterns';
     else if (key === 'exclude_keywords') inList = 'exclude_keywords';
     else inList = null;
   }
   return out;
 }
 
+/** Compile the configured patterns once; a broken pattern is a config error, not a silent miss. */
+function compilePatterns(cfg) {
+  return (cfg.patterns ?? []).map((source) => {
+    try {
+      return { source, re: new RegExp(source, cfg.case_sensitive ? 'u' : 'iu') };
+    } catch (error) {
+      throw new Error(`Invalid pattern "${source}": ${error.message}`);
+    }
+  });
+}
+
 function decide(cfg, text) {
   if (cfg.mode === 'global') return { engaged: true, reason: 'mode=global' };
   if (cfg.mode === 'manual') return { engaged: false, reason: 'mode=manual (explicit invocation required)' };
-  // keyword mode
+
   const hay = cfg.case_sensitive ? text : text.toLowerCase();
   const norm = (s) => (cfg.case_sensitive ? s : s.toLowerCase());
-  const hits = cfg.keywords.filter((k) => hay.includes(norm(k)));
-  const excludes = cfg.exclude_keywords.filter((k) => hay.includes(norm(k)));
+
+  const excludes = (cfg.exclude_keywords ?? []).filter((k) => hay.includes(norm(k)));
   if (excludes.length > 0) return { engaged: false, reason: 'excluded by: ' + excludes.join(',') };
-  if (hits.length === 0) return { engaged: false, reason: 'no keyword matched' };
+
+  const hits = (cfg.keywords ?? []).filter((k) => hay.includes(norm(k)));
+  const patternHits = compilePatterns(cfg).filter((p) => p.re.test(text)).map((p) => p.source);
+
   if (cfg.match === 'all') {
-    const all = cfg.keywords.every((k) => hay.includes(norm(k)));
-    return all ? { engaged: true, reason: 'all keywords matched', hits } : { engaged: false, reason: 'match=all but not every keyword matched', hits };
+    const missingKeywords = (cfg.keywords ?? []).filter((k) => !hay.includes(norm(k)));
+    const missingPatterns = compilePatterns(cfg).filter((p) => !p.re.test(text)).map((p) => p.source);
+    const all = missingKeywords.length === 0 && missingPatterns.length === 0;
+    return all
+      ? { engaged: true, reason: 'all keywords and patterns matched', hits, patternHits }
+      : { engaged: false, reason: 'match=all but not every signal matched', hits, patternHits };
   }
-  return { engaged: true, reason: 'keyword matched', hits };
+
+  if (hits.length === 0 && patternHits.length === 0) {
+    return { engaged: false, reason: 'no keyword or pattern matched' };
+  }
+  return {
+    engaged: true,
+    reason: hits.length && patternHits.length ? 'keyword and pattern matched' : (hits.length ? 'keyword matched' : 'pattern matched'),
+    hits,
+    patternHits,
+  };
 }
 
 const args = parseArgs(process.argv);
@@ -73,7 +108,7 @@ if (!text) { console.error('No --text or stdin provided'); process.exit(2); }
 
 const defaultConfigPath = 'config/agents.example.yaml';
 const configPath = args.config || (fs.existsSync(defaultConfigPath) ? defaultConfigPath : null);
-let cfg = { mode: args.mode || 'keyword', match: 'any', case_sensitive: false, keywords: [], exclude_keywords: [] };
+let cfg = { mode: args.mode || 'keyword', match: 'any', case_sensitive: false, keywords: [], patterns: [], exclude_keywords: [] };
 if (configPath) {
   try { cfg = readYamlSection(configPath); } catch (e) { console.error('Config read failed: ' + e.message); process.exit(2); }
 } else if (!args.mode) {
@@ -81,12 +116,23 @@ if (configPath) {
   console.error('Pass --config <path>, or --mode global|manual.');
   process.exit(2);
 }
-if (cfg.mode === 'keyword' && cfg.keywords.length === 0) {
-  console.error('Keyword activation mode has an empty keyword list; it would silently never engage.');
-  console.error('Add keywords to ' + (configPath || 'the config') + ' or use --mode global|manual.');
+if (cfg.mode === 'keyword' && cfg.keywords.length === 0 && (cfg.patterns ?? []).length === 0) {
+  console.error('Keyword activation mode has an empty keyword and pattern list; it would silently never engage.');
+  console.error('Add keywords or patterns to ' + (configPath || 'the config') + ' or use --mode global|manual.');
   process.exit(2);
 }
 
-const result = decide(cfg, text);
-console.log(result.engaged ? 'ENGAGED' : 'NOT_ENGAGED', '|', result.reason, result.hits ? '| hits: ' + result.hits.join(', ') : '');
+let result;
+try {
+  result = decide(cfg, text);
+} catch (error) {
+  console.error(error.message);
+  process.exit(2);
+}
+const detail = [
+  result.reason,
+  result.hits?.length ? 'hits: ' + result.hits.join(', ') : null,
+  result.patternHits?.length ? 'patterns: ' + result.patternHits.length : null,
+].filter(Boolean).join(' | ');
+console.log(result.engaged ? 'ENGAGED' : 'NOT_ENGAGED', '|', detail);
 process.exit(result.engaged ? 0 : 1);

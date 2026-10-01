@@ -16,6 +16,7 @@ You will receive an acknowledgment within 5 business days and a status update on
 - Task titles and workspaces are free-form text. The dispatch record carries them as an `argv` array; the printable `command` is rendered with POSIX single-quote escaping (never `JSON.stringify`, which leaves `$(...)`, backticks, `${...}` and `!` live). Prefer `argv` over pasting the command line into a shell.
 - Evidence logs may contain paths, hashes, and error text. Do not paste full transcripts or credentials into shared task records.
 - Single-writer ownership prevents parallel agents from overwriting the same resource; verify lock ownership before writing.
+- The task queue serialises writers across processes: an exclusive lock file, a temp-file-and-rename write, and a stale-lock takeover so a crashed run cannot wedge it.
 - Never let an implementer certify its own work: the verification worker must be a different agent than the author.
 
 ## Scope

@@ -83,6 +83,48 @@ export const STAGES = ['specify', 'triage', 'implement', 'verify', 'evidence', '
 export const EXECUTION_MODES = ['single', 'collaborative'];
 export const PLAN_CHOICES = ['planned', 'skip'];
 
+/**
+ * Rigor is chosen from the blast radius of the change, not from how interesting it is, and it
+ * decides which activities are mandatory - the way an integrity level selects V&V tasks in
+ * IEEE 1012. See references/verification-standard.md.
+ *   L1 local         - one file, reversible; tests for the change; self-produced evidence allowed
+ *   L2 shared        - multiple files, shared config or user-visible behaviour (the default)
+ *   L3 consequential - irreversible, published, deployed, or touching credentials/permissions
+ */
+export const RIGOR_LEVELS = ['L1', 'L2', 'L3'];
+export const DEFAULT_RIGOR = 'L2';
+
+/**
+ * Evidence grades. E1 means someone else can re-run it and get the same answer; E3 means only
+ * the producer looked. A bare string is recorded as E3 and labelled as such, so it can never
+ * borrow E1's voice.
+ */
+export const EVIDENCE_GRADES = ['E1', 'E2', 'E3', 'E4'];
+export const E1_REQUIRED_FIELDS = ['command', 'exitCode', 'revision'];
+
+/**
+ * Turn whatever a caller passed as evidence into a graded record. Keeping the old string form
+ * working matters (every existing call site uses it), but it must not be allowed to pose as
+ * E1: an ungraded sentence is self-report, so it is downgraded to E3 with a note.
+ */
+export function normalizeEvidence(agent, ev) {
+  const record = { at: now(), agent };
+  if (typeof ev === 'string') {
+    return { ...record, grade: 'E3', text: ev, note: 'ungraded string, downgraded to E3' };
+  }
+  const grade = ev?.grade;
+  if (!EVIDENCE_GRADES.includes(grade)) {
+    throw new Error(`evidence.grade is required and must be one of ${EVIDENCE_GRADES.join(', ')}`);
+  }
+  if (grade === 'E1') {
+    const missing = E1_REQUIRED_FIELDS.filter((field) => ev[field] === undefined || ev[field] === '');
+    if (missing.length) {
+      throw new Error(`E1 evidence must carry ${missing.join(', ')} - a reproducible result needs the command, its exit code and the revision it applies to`);
+    }
+  }
+  return { ...record, ...ev, grade };
+}
+
 /** Default workspace label. Relative on purpose: no machine path is baked in. */
 export const DEFAULT_WORKSPACE = '.';
 
@@ -362,6 +404,17 @@ export function createTask(state, input) {
     if (!independentVerify) missing.push('--independent-verify');
     if (missing.length) throw new Error(`Important task requires: ${missing.join(', ')}`);
   }
+  // Rigor: how much verification this change has to carry. It is stated, not inferred, and an
+  // irreversible action can never be filed as "local".
+  const rigor = input.rigor ?? DEFAULT_RIGOR;
+  if (!RIGOR_LEVELS.includes(rigor)) {
+    throw new Error(`Invalid rigor: ${rigor} (allowed: ${RIGOR_LEVELS.join(', ')})`);
+  }
+  if (rigor === 'L1' && input.externalAction) {
+    throw new Error(
+      `An external action (${input.externalAction}) cannot be L1: it leaves the machine. Use L3, which requires independent verification and E1 evidence.`,
+    );
+  }
   const startChoices = {
     executionMode: executionMode ?? DEFAULT_START_CHOICES.executionMode,
     security: security ?? DEFAULT_START_CHOICES.security,
@@ -379,6 +432,7 @@ export function createTask(state, input) {
     assignedAgent: initial.agent,
     status: 'queued',
     important,
+    rigor,
     startChoices,
     lock: null,
     externalAction: input.externalAction
@@ -422,7 +476,7 @@ export function completeStage(state, id, agent, result = {}) {
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot complete a stage`);
   requireOwner(task, agent);
   task.verification ??= emptyVerification();
-  if (result.evidence) task.evidence.push({ at: now(), agent, text: result.evidence });
+  if (result.evidence) task.evidence.push(normalizeEvidence(agent, result.evidence));
   const roster = next.roster ?? DEFAULT_ROSTER;
   const implementAgent = implementerForType(task.type, roster);
   // The verifier is chosen by capability score, never the implementer (see selectVerifier).
@@ -437,6 +491,13 @@ export function completeStage(state, id, agent, result = {}) {
     throw new Error(
       `Task ${id} cannot reach done: verification has not passed (status: ${task.verification.status}). ` +
         'Re-run the verify stage, or record an explicit override with approvedBy, scope and reason.',
+    );
+  }
+  // Rigor L3 means the blast radius is irreversible or published, so a graded, reproducible
+  // artifact is required - not a sentence saying it looked fine.
+  if (task.phase === 'evidence' && task.rigor === 'L3' && !task.evidence.some((e) => e.grade === 'E1')) {
+    throw new Error(
+      `Task ${id} is L3 (consequential) and cannot reach done without E1 evidence: a command, its exit code and the revision it applies to.`,
     );
   }
   const stageOwner = (role) => ownerFor(role, { roster, type: task.type, capability: task.capability });

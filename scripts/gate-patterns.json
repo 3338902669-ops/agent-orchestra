@@ -1,0 +1,26 @@
+{
+  "schema": "agent-orchestra/gate-patterns@1",
+  "note": "Scanned by scripts/gate.mjs against every shipped file except this one.",
+  "privatePaths": [
+    "C:\\\\Users",
+    "/Users/",
+    ".openclaw",
+    "\\\\.dsh",
+    "/home/"
+  ],
+  "secrets": [
+    "BEGIN [A-Z ]*PRIVATE KEY",
+    "AKIA[0-9A-Z]{16}",
+    "ghp_[A-Za-z0-9]{20,}",
+    "sk-[A-Za-z0-9]{20,}",
+    "xox[baprs]-[A-Za-z0-9-]{10,}"
+  ],
+  "disallowedProductNames": [
+    "tianshu",
+    "openclaw",
+    "rivet",
+    "aurevia",
+    "morphos",
+    "dsh"
+  ]
+}

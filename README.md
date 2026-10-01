@@ -156,6 +156,26 @@ This is important. Three agents are available. Assign the best implementation ag
 
 Expected: capability inventory, role assignment, task packet, intake-gate answers, ownership lock, implementation evidence, independent verification with graded evidence, acceptance report, and `awaiting_user_approval` for deployment.
 
+## Checking this repository
+
+One command, and it is the same command CI runs:
+
+```bash
+node scripts/gate.mjs            # evidence lands in evidence/latest.json
+node scripts/gate.mjs --no-self-test   # skip the gate's own failure test (not recommended)
+```
+
+The runner checks that the shipped config is usable by the engine, that activation engages on
+intent and stays silent on lookalikes, that the queue engine and the CLI I/O behave, and that
+no private path, secret or host-specific name ships. It writes a machine-readable record
+bound to the git revision and to the SHA-256 of the key artifacts.
+
+It also **proves it can fail**: before reporting PASS it injects known-bad configurations and
+requires every one to be rejected. A gate that has quietly stopped checking anything therefore
+fails instead of reporting green - see [`references/verification-standard.md`](references/verification-standard.md)
+for the requirements it is held to, and [`KNOWN-FINDINGS.md`](KNOWN-FINDINGS.md) for accepted
+defects and their review dates.
+
 ## License
 
 MIT.

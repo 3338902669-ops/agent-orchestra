@@ -14,7 +14,8 @@
 // The queue file is resolved relative to this module, so the CLI works from any cwd.
 // ORCHESTRATOR_STATE overrides the path (used by smoke tests to avoid writing into the repo).
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, rmSync, openSync, closeSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import {
@@ -33,8 +34,11 @@ const STATE_PATH = process.env.ORCHESTRATOR_STATE
   ? process.env.ORCHESTRATOR_STATE
   : new URL('TASK-QUEUE.json', import.meta.url);
 
+/** Always a filesystem path, so temp-file names and rename() work the same either way. */
+const STATE_FILE = STATE_PATH instanceof URL ? fileURLToPath(STATE_PATH) : String(STATE_PATH);
+
 function stateLabel() {
-  return STATE_PATH instanceof URL ? fileURLToPath(STATE_PATH) : String(STATE_PATH);
+  return STATE_FILE;
 }
 
 function backupTarget(stamp) {
@@ -43,12 +47,100 @@ function backupTarget(stamp) {
     : `${STATE_PATH}.pre-init-${stamp}.bak`;
 }
 
-function load() {
-  return existsSync(STATE_PATH) ? JSON.parse(readFileSync(STATE_PATH, 'utf8')) : createState();
+/**
+ * Revision = number of events. Mutators append exactly one event each, so the count
+ * grows monotonically and doubles as a version number for the optimistic lock below.
+ */
+function revisionOf(state) {
+  return (state.events ?? []).length;
 }
 
-function save(state) {
-  writeFileSync(STATE_PATH, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+/** Blocking sleep without a dependency (used only while waiting for the lock). */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+const LOCK_FILE = `${STATE_FILE}.lock`;
+const LOCK_WAIT_MS = Number(process.env.ORCHESTRATOR_LOCK_WAIT_MS ?? 5000);
+const LOCK_STALE_MS = 10000;
+
+/**
+ * Mutual exclusion across processes. openSync(..., 'wx') fails if the file exists, and
+ * that check-and-create is atomic at the OS level, so exactly one process can hold the
+ * lock. A lock left behind by a crashed process is stolen once it is stale.
+ *
+ * Comparison alone is not enough: "read the revision, compare, then write" leaves a
+ * window in which two processes both compare successfully and both write, which is
+ * exactly the lost-update race this guards against.
+ */
+function acquireLock() {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      const fd = openSync(LOCK_FILE, 'wx');
+      writeFileSync(fd, `${process.pid} ${new Date().toISOString()}\n`);
+      closeSync(fd);
+      return;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        if (Date.now() - statSync(LOCK_FILE).mtimeMs > LOCK_STALE_MS) {
+          rmSync(LOCK_FILE, { force: true });
+          continue;
+        }
+      } catch {
+        continue; // the lock disappeared between the open and the stat: retry immediately
+      }
+      if (Date.now() > deadline) {
+        throw new Error('the queue is locked by another process; re-run in a moment');
+      }
+      sleepSync(25);
+    }
+  }
+}
+
+function releaseLock() {
+  rmSync(LOCK_FILE, { force: true });
+}
+
+/** Read the queue and remember the revision we read it at. */
+function load() {
+  const state = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : createState();
+  return { state, rev: revisionOf(state) };
+}
+
+/**
+ * Atomic write: serialise to a unique temp file in the same directory, then rename it
+ * over the queue. rename() is atomic within a filesystem, so a reader never observes a
+ * half-written queue - and a crash mid-write leaves the previous queue intact.
+ */
+function writeState(state) {
+  const tmp = `${STATE_FILE}.${process.pid}.${randomUUID()}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  try {
+    renameSync(tmp, STATE_FILE);
+  } catch (error) {
+    rmSync(tmp, { force: true });
+    throw error;
+  }
+}
+
+/**
+ * Optimistic lock. Every command reads, computes and writes; without this check two
+ * concurrent invocations both read the same revision and the later write silently
+ * discards the earlier one (a lost claim, an overwritten evidence entry). Here the
+ * second writer is refused and told to re-run against the new state.
+ */
+function commit(state, expectedRev) {
+  const currentRev = existsSync(STATE_FILE)
+    ? revisionOf(JSON.parse(readFileSync(STATE_FILE, 'utf8')))
+    : 0;
+  if (currentRev !== expectedRev) {
+    throw new Error(
+      `state changed underneath this command (expected v${expectedRev}, found v${currentRev}). Re-run.`,
+    );
+  }
+  writeState(state);
 }
 
 function value(args, flag, required = true) {
@@ -63,8 +155,18 @@ function print(output) {
 }
 
 function main(args) {
+  // One writer at a time: the lock is held across read-modify-write.
+  acquireLock();
+  try {
+    return runCommand(args);
+  } finally {
+    releaseLock();
+  }
+}
+
+function runCommand(args) {
   const command = args[0];
-  let state = load();
+  const { state, rev } = load();
   if (command === 'init') {
     // --roster <file> installs a team of any size (3 agents, 5, 12 - the shape is
     // documented in the README). Without it the default three-agent roster is used.
@@ -83,19 +185,19 @@ function main(args) {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backup = backupTarget(stamp);
       writeFileSync(backup, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-      state = createState(roster);
-      save(state);
+      const fresh = createState(roster);
+      commit(fresh, rev);
       return print({
         ok: true,
         reset: true,
         backedUpTasks: taskCount,
         backup: backup instanceof URL ? fileURLToPath(backup) : String(backup),
-        agents: Object.keys(state.roster.agents),
+        agents: Object.keys(fresh.roster.agents),
       });
     }
-    state = createState(roster);
-    save(state);
-    return print({ ok: true, state: stateLabel(), agents: Object.keys(state.roster.agents) });
+    const fresh = createState(roster);
+    commit(fresh, rev);
+    return print({ ok: true, state: stateLabel(), agents: Object.keys(fresh.roster.agents) });
   }
   if (command === 'status') return print(state);
   if (command === 'create') {
@@ -106,27 +208,42 @@ function main(args) {
       workspace: value(args, '--workspace', false),
       externalAction: value(args, '--external-action', false),
       important: args.includes('--important'),
+      rigor: value(args, '--rigor', false),
       executionMode: value(args, '--execution-mode', false),
       security: value(args, '--security', false),
       independentVerify: value(args, '--independent-verify', false),
     });
-    save(result.state);
+    commit(result.state, rev);
     return print(result.task);
   }
   const id = value(args, '--task');
   if (command === 'claim') {
     const result = claimTask(state, id, value(args, '--agent'));
-    save(result.state);
+    commit(result.state, rev);
     return print(result.task);
   }
   if (command === 'complete') {
-    const result = completeStage(state, id, value(args, '--agent'), { evidence: value(args, '--evidence', false) });
-    save(result.state);
+    // Graded evidence: --evidence-grade turns the free text into a graded record, and E1 is
+    // refused unless it carries the command, the exit code and the revision (see lib.mjs).
+    const grade = value(args, '--evidence-grade', false);
+    const text = value(args, '--evidence', false);
+    const exitCodeRaw = value(args, '--evidence-exit-code', false);
+    const evidence = grade
+      ? {
+          grade,
+          text: text ?? null,
+          command: value(args, '--evidence-command', false) ?? null,
+          revision: value(args, '--evidence-revision', false) ?? null,
+          exitCode: exitCodeRaw === undefined || exitCodeRaw === null ? null : Number(exitCodeRaw),
+        }
+      : text;
+    const result = completeStage(state, id, value(args, '--agent'), { evidence });
+    commit(result.state, rev);
     return print(result.task);
   }
   if (command === 'recover') {
     const result = recoverTask(state, id, { reason: value(args, '--reason') });
-    save(result.state);
+    commit(result.state, rev);
     return print(result.task);
   }
   if (command === 'approve') {
@@ -134,7 +251,7 @@ function main(args) {
       approvedBy: value(args, '--by'),
       scope: value(args, '--scope'),
     });
-    save(result.state);
+    commit(result.state, rev);
     return print(result.task);
   }
   // Verification gate: fail sends the task back to implement and keeps the gate shut.
@@ -143,7 +260,7 @@ function main(args) {
       criteria: value(args, '--criteria', false),
       findings: value(args, '--findings', false),
     });
-    save(result.state);
+    commit(result.state, rev);
     return print(result.task);
   }
   // Soft gate: only with an approver, a scope AND a reason; the failure stays on record.
@@ -153,7 +270,7 @@ function main(args) {
       scope: value(args, '--scope'),
       reason: value(args, '--reason'),
     });
-    save(result.state);
+    commit(result.state, rev);
     return print(result.task);
   }
   // Dry run only: nextDispatch never spawns anything, and it throws for tasks that
