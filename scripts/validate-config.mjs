@@ -129,6 +129,20 @@ if (/^\s+mode:\s*keyword\s*$/m.test(yaml)) {
   for (const pattern of patterns) {
     try { new RegExp(pattern, 'iu'); } catch (error) { errors.push('activation pattern "' + pattern + '" is not a valid regex: ' + error.message); }
   }
+  // Pattern engagement is a conjunction of these two: without both, a collaboration phrase with
+  // no agent in it ("两个同事同时改同一个文件") would engage again.
+  for (const key of ['agent_anchors', 'coordination_acts']) {
+    const list = inlineList(key);
+    if (!list || list.length === 0) {
+      errors.push('activation.' + key + ' must be a non-empty list (pattern engagement requires an agent subject AND an act of coordinating)');
+    }
+  }
+  for (const key of ['comparison_words', 'collaboration_words']) {
+    const list = inlineList(key);
+    if (!list || list.length === 0) {
+      errors.push('activation.comparison_veto.' + key + ' must be a non-empty list, or the veto silently never fires');
+    }
+  }
 }
 
 // --- intake gate: exactly the values the queue stores ---

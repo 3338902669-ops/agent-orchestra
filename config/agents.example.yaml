@@ -40,6 +40,7 @@ activation:
     - 交接
     - 接力干活
     - 换助手
+    - 换个助手
     - 交接班
     - 独立核验
     - 独立复核
@@ -52,19 +53,26 @@ activation:
   # on how a person describes the problem ("两个 AI 改同一个文件") instead of on the
   # vocabulary the skill itself uses. Deliberately single-quoted so YAML leaves the
   # backslashes alone.
+  # Engagement by pattern is a CONJUNCTION, not a hit: a sentence must name an agent-ish subject
+  # (agent_anchors) AND describe an act of coordinating (coordination_acts). Matching collaboration
+  # verbs alone is how "两个实习生互相覆盖对方的代码" and "两个同事同时改同一个文件" engaged - they
+  # are people, not agents - and enumerating comparison synonyms to catch the lookalikes is a race
+  # that cannot be won. Requiring the subject is the structural fix.
+  agent_anchors: [ai, agent, bot, 代理, 助手, 智能体, 大模型, 大语言模型, 模型, claude, gpt, gemini, copilot, deepseek, qwen, grok, llama, kimi, mistral, 通义, 文心, 豆包, 混元, 智谱]
+  coordination_acts: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力, 交接, 核验, 复核, 互相, 覆盖, 冲突, 同一个文件, 同一份文件, 一起做, 改, 写, 编辑, 做, 干, 跑]
   patterns:
     # A plural count of agents counts only when it is about agents DOING something. "三个 AI 模型的
     # 对比评测" is a lookalike; "我要用三个 AI 一起做" is the real thing. The negative lookahead
     # covers the comparison nouns, including when a modifier ("AI 大模型") sits in between.
     - '(多|几|两|三|四|五|六|双|\d+)\s*个?\s*(ai|agent|bot|代理|助手|智能体|大模型|大语言模型|模型)(?!\s*(的|大?模型|大?语言模型|软件|产品|工具|平台|服务|对比|评测|测评|排名|价格|方案|供应商|公司))'
     # Agent word plus an act of collaborating. "一块儿" is how people actually say it.
-    - '(ai|agent|bot|代理|助手|智能体|大模型|大语言模型)[^。！？,.，]{0,12}(一起|一块儿|同时|共同|协同|协作|配合|分别|并行)'
+    - '(ai|agent|bot|代理|助手|智能体|大模型|大语言模型)[^。！？,.，]{0,12}(一起|一块儿|同时|共同|协同|协作|配合|分别|各自|各|并行)'
     # People name the models, and a name pair alone proves nothing: it must sit next to an act of
     # collaborating, otherwise "Claude 和 GPT 哪个强" (a comparison) would engage.
-    - '(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,20}(和|与|跟|、)[^。！？,.，]{0,20}(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,24}(一起|一块儿|同时|共同|协作|协同|配合|分别|分工|并行|接力)'
+    - '(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,20}(和|与|跟|、)[^。！？,.，]{0,20}(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,24}(一起|一块儿|同时|共同|协作|协同|配合|分别|各自|各|分工|并行|接力)'
     # "让 X 和 Y 一起" only counts when an agent-ish thing is being directed - otherwise it fires on
     # "让小明和小红一起写作业", which is two people, not two agents.
-    - '(让|叫|请|用|派|安排)[^。！？,.，]{0,16}(ai|agent|bot|代理|助手|智能体|大模型|大语言模型|模型)[^。！？,.，]{0,24}(一起|一块儿|同时|共同|分别|协作|协同|配合|分工|并行)'
+    - '(让|叫|请|用|派|安排)[^。！？,.，]{0,16}(ai|agent|bot|代理|助手|智能体|大模型|大语言模型|模型)[^。！？,.，]{0,24}(一起|一块儿|同时|共同|分别|各自|各|协作|协同|配合|分工|并行)'
     - '(换个?|再换个?|换一?个)\s*(助手|ai|agent|代理|大模型|模型|工具)'
     - '(互相|相互|彼此)\s*(覆盖|冲突|打架|撞车|改乱)'
     - '同一个文件|同一份文件'
@@ -78,7 +86,7 @@ activation:
   # (real work that happens to include a comparison) still engages.
   comparison_veto:
     comparison_words: [对比, 评测, 测评, 区别, 差异, 优缺点, 选型, 排名, 性价比, 哪个, 哪一个, 哪个更]
-    collaboration_words: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 并行, 接力]
+    collaboration_words: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力]
   exclude_keywords:     # a veto: if any of these appear, do NOT engage even when a signal hit
     - just a question
     - 闲聊

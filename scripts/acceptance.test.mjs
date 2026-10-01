@@ -52,6 +52,9 @@ const MUST_ENGAGE = [
   '双 AI 并行开发这个功能',
   '两个 bot 并行开发这个功能',
   '让两个大模型分别负责前后端开发',
+  // Round 3: real coordination was being missed because the collaboration list lacked 各.
+  '让两个 agent 各写一个版本，最后我来对比哪个好',
+  '让 Claude 和 GPT 各做一个模块，最后我看下哪个做得好',
 ];
 
 // Ordinary requests that merely contain a word the skill also uses. Engaging here is worse
@@ -73,6 +76,12 @@ const MUST_NOT_ENGAGE = [
   '帮我把这三个 AI 大模型的对比评测整理成表格',
   'GPT 和 Gemini 的区别是什么，帮我写篇对比文章',
   '我有三个 AI 助手，帮我对比一下它们哪个更适合做代码评审',
+  // Round 3: comparison/selection dressed in synonyms, and people disguised as agents.
+  '帮我给这三个大模型排个名',
+  '帮我评一评这三个大模型',
+  '帮我 compare 一下这三个大模型谁更适合',
+  '两个实习生互相覆盖对方的代码',
+  '两个同事同时改同一个文件',
 ];
 
 test('activation engages on how people describe the problem', () => {

@@ -31,12 +31,20 @@ Configure in `config/agents.example.yaml` under `activation:`.
 3. keyword -> run `node scripts/detect-trigger.mjs --text "<task text>"`. Exit 0 (ENGAGED) means use this skill; 1 (NOT_ENGAGED) means do not. Exclude keywords, and the sentence-level comparison veto, win over any hit.
 
 What the keyword layer is, honestly: a **conservative deterministic filter**, not a full
-understanding of intent. It matches unambiguous phrases plus intent patterns, and it refuses to
-engage when the request is really a comparison of models or a split between people - those share
-the vocabulary and none of them is coordination. Being wrong in the other direction costs one
-missed phrase, so it is tuned to stay silent when unsure rather than to fire on a lookalike. The
-description above is what the host model routes on, and an explicit request always wins: if a
-user says to use this skill, no keyword check applies.
+understanding of intent. Unambiguous phrases engage on their own. Anything a pattern catches must
+also satisfy a **conjunction**: the sentence has to name an agent-ish subject (an agent word, a
+model name) **and** describe an act of coordinating. That conjunction is what keeps
+"两个同事同时改同一个文件" and "两个实习生互相覆盖对方的代码" silent - they share the phrasing and
+the vocabulary, and they are people, not agents. A sentence-level veto then removes requests that
+are really about comparing or choosing between models.
+
+Three independent verifiers' rounds found 25 cases that broke earlier versions of this table;
+every one is now a permanent test, and the fixed cases are the ones that matter most. What the
+layer does NOT do is understand arbitrary phrasing: an unusual way of asking may stay silent, and
+that is the intended failure direction - one missed phrase costs a nudge, a false engage
+reorganises work that has nothing to do with agents. The description above is what the host model
+routes on, and an explicit request always wins: if a user says to use this skill, no keyword check
+applies.
 
 > 中文：关键词层是**保守的确定性过滤器**，不是万能的意图理解。命中明确词组与意图正则，同时句级否决「模型对比评测」「人的分工」这类同词不同义的请求；不确定时宁可沉默也不误召。真正的路由依据是上面的 description，且**用户明确要求使用时，一律优先**。
 
