@@ -63,6 +63,20 @@ test('a record that does not claim precedence over the queue is incomplete', () 
   assert.ok(result.problems.some((p) => p.includes('outranks')));
 });
 
+test('a negated precedence claim does not satisfy the requirement', () => {
+  // 优先于 is inside all of these, so only a positive assertion may count.
+  for (const claim of ['本记录不优先于队列。', '本记录并非优先于队列。', '本记录不高于队列。']) {
+    const result = checkHandoff(makeRecord({ content: VALID.replace('the record outranks the queue.', claim) }));
+    assert.equal(result.ok, false, claim + ' was accepted');
+    assert.ok(result.problems.some((p) => p.includes('outranks')), claim + ': ' + JSON.stringify(result.problems));
+  }
+});
+
+test('a positive precedence claim in Chinese is accepted', () => {
+  const result = checkHandoff(makeRecord({ content: VALID.replace('the record outranks the queue.', '本记录优先于队列。') }));
+  assert.equal(result.ok, true, JSON.stringify(result.problems));
+});
+
 test('an empty entry is a failure, not a blank success', () => {
   const result = checkHandoff(makeRecord({ content: '' }));
   assert.equal(result.ok, false);
