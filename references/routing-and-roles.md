@@ -126,6 +126,25 @@ Adding an agent is a **data edit, not a code change**:
 - **On conflict, stop and follow the human-readable task record.** Never resolve an ownership conflict by writing faster.
 - **Reviewers may promote themselves to writers only through a recorded handoff**, and only after the previous owner has released the lock.
 
+### Limits of the scoring system (read before trusting a number)
+
+The scores are **self-declared**. The rubric - 3 means a direct tool plus repeated evidence, 2 means
+reasonable with partial evidence, 1 means indirect or unverified - is a convention the engine cannot
+check: a roster is data, and nothing records what backs a number or when it was assessed. Treat a
+score as a claim, not a measurement, and revisit it when the evidence changes.
+
+Two consequences of the ranking order, stated so they are not surprises:
+
+- **A capability match only breaks ties.** A non-specialist scoring 3 beats a specialist scoring 2 on
+  a `web` task. That is deliberate (demonstrated competence over a label); if a project needs the
+  specialist to win, give the specialist the higher score.
+- **Cost is a tie-break, not an optimisation.** A cheaper agent never wins against a higher score, so
+  the ranking is not a cost model, and the tiers in the config are labels for the operator.
+
+What the engine does enforce, so a roster cannot lie about its own shape: scores are numbers 0-3,
+roles must be known, `cost` must be a number, `available` must be a boolean, `specialties` must be an
+array, and a verifier whose best score is 0 fails closed rather than passing the gate.
+
 ## 5. Verifier != implementer (hard constraint)
 
 How much independence is required is set by **rigor**, which the task states and the engine stores

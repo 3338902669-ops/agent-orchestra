@@ -122,6 +122,15 @@ export function normalizeEvidence(agent, ev) {
       throw new Error(`E1 evidence must carry ${missing.join(', ')} - a reproducible result needs the command, its exit code and the revision it applies to`);
     }
   }
+  // The other grades are constrained too. Enforcing only E1 left the same hole one rung down: a
+  // self-check could label itself E2 ("a peer re-ran it") and nothing asked who the peer was.
+  if (grade === 'E2') {
+    if (!ev.checkedBy) throw new Error('E2 evidence must name the peer that re-ran it (checkedBy)');
+    if (ev.checkedBy === agent) throw new Error('E2 is a peer check, so checkedBy must differ from the author recording it');
+  }
+  if (grade === 'E4') {
+    if (!ev.plan && !ev.target) throw new Error('E4 evidence must say what is planned (plan or target)');
+  }
   return { ...record, ...ev, grade };
 }
 
@@ -410,9 +419,12 @@ export function createTask(state, input) {
   if (!RIGOR_LEVELS.includes(rigor)) {
     throw new Error(`Invalid rigor: ${rigor} (allowed: ${RIGOR_LEVELS.join(', ')})`);
   }
-  if (rigor === 'L1' && input.externalAction) {
+  if (input.externalAction && rigor !== 'L3') {
+    // The config states irreversible_requires: L3, and this is what makes it true: an action that
+    // leaves the machine is consequential by definition, so L2 (which only requires a different
+    // verifier) is not enough - it needs E1 evidence and a verifier that took no part in the work.
     throw new Error(
-      `An external action (${input.externalAction}) cannot be L1: it leaves the machine. Use L3, which requires independent verification and E1 evidence.`,
+      `An external action (${input.externalAction}) must be L3: it is irreversible, so it needs independent verification and E1 evidence (got ${rigor}).`,
     );
   }
   // A task that leaves the machine cannot take the defaults: "not asked" must never mean "no scan,
@@ -503,7 +515,13 @@ export function completeStage(state, id, agent, result = {}) {
   const implementAgent = implementerForType(task.type, roster);
   // The verifier is chosen by capability score, never the implementer (see selectVerifier).
   const needsVerifier = task.phase === 'implement';
-  const verifier = needsVerifier ? selectVerifier(agent, roster, { capability: task.capability }) : null;
+  // Rigor decides how much independence is required, as the standard says: L1 is local and
+  // reversible, so the implementer may verify it (recorded as selfVerified); L2 and L3 still need
+  // a different agent, and L3 additionally checks that the verifier produced none of the evidence.
+  const selfVerified = needsVerifier && task.rigor === 'L1';
+  const verifier = needsVerifier
+    ? (selfVerified ? agent : selectVerifier(agent, roster, { capability: task.capability }))
+    : null;
   if (needsVerifier && !verifier) {
     throw new Error(`No independent verifier available for implementer ${agent}`);
   }
@@ -579,6 +597,9 @@ export function completeStage(state, id, agent, result = {}) {
       findings: null,
       at: now(),
       by: agent,
+      // L1 only: the implementer verified their own work. Recorded rather than hidden, so a reader
+      // can tell a self-check from an independent one without reading the roster.
+      selfVerified: task.rigor === 'L1' && agent === implementAgent,
     };
   }
   task.phase = nextStep.phase;

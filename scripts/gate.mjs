@@ -149,6 +149,13 @@ step('hygiene', 'no private paths, secrets or host-specific names ship', () => {
     : { status: 0, durationMs: 0, out: 'no private paths, secrets or host-specific names', err: '' };
 }, 'exit 0: zero matches across every shipped file');
 
+step('config-usage', 'no config key pretends to be behaviour the engine does not have', () => {
+  const r = node(['scripts/check-config-usage.mjs']);
+  return r.status === 0
+    ? { status: 0, durationMs: 0, out: 'every config key is read by a script or declared advisory', err: '' }
+    : { status: 1, durationMs: 0, out: '', err: r.err || r.out };
+}, 'exit 0: each key is either referenced by the scripts or listed as advisory with a reason');
+
 step('claims', 'numbers stated in the docs match reality', () => {
   // The config was once the thing that lied; the docs can lie the same way. Only current-state
   // documents are checked - CHANGELOG entries describe past releases and are historical by nature.

@@ -40,21 +40,31 @@ V&V tasks apply.
 
 ## 3. Independence
 
-| Level | Who may verify |
-|---|---|
-| L1 | the implementer, or anyone else |
-| L2 | any agent except the implementer, selected by capability score |
-| L3 | an agent that took no part in the work, plus a tool that produces the raw evidence |
+| Level | Who may verify | Enforced |
+|---|---|---|
+| L1 | the implementer, or anyone else | the engine allows it and records `verification.selfVerified: true` |
+| L2 | any agent except the implementer, selected by capability score | the engine refuses the implementer as verifier |
+| L3 | an agent that took no part in the work, plus a tool that produces the raw evidence | the engine refuses a verifier whose id appears among the task's evidence authors |
+
+An **external action must be L3**: it leaves the machine, so it is irreversible by definition and
+"a different verifier" is not enough. The engine refuses to create such a task at any lower level.
 
 Self-verification is never independent, and "another agent looked at it" is not independence
 unless that agent neither wrote nor decided the work.
 
 ## 4. What evidence must carry
 
-An evidence record is not a sentence. At minimum it names the criterion, the command, the
-exit code, the key output, the revision, and who produced it. `E1` means someone else can
-re-run it and get the same result; `E3` means only the producer checked. A bare string is
-recorded as `E3` and labelled as such - it never borrows `E1`'s voice.
+An evidence record is not a sentence. Every grade has a floor the engine enforces:
+
+| Grade | The engine requires |
+|---|---|
+| E1 | `command`, `exitCode` and `revision` - a reproducible result names how, what happened, and what it applies to |
+| E2 | `checkedBy`, and it must differ from the agent recording the evidence: a peer check names the peer, and the peer is not the author |
+| E3 | nothing further - this is what a bare sentence becomes, labelled with a note instead of being silently promoted |
+| E4 | `plan` or `target` - a plan says what is planned |
+
+A bare string is recorded as `E3`; it never borrows `E1`'s voice, and it cannot claim a peer check
+either.
 
 ## 5. Honest limits
 

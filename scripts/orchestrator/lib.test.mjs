@@ -48,8 +48,10 @@ import {
 function createOne(input) {
   // An external action must state its start choices (the intake gate no longer answers for the
   // user), so these approval tests supply them and then test what they are actually about.
+  // An external action must state its choices AND be L3 (irreversible), so these approval tests
+  // supply both and then test what they are actually about.
   const withChoices = input?.externalAction
-    ? { important: true, executionMode: 'collaborative', security: 'planned', independentVerify: 'planned', ...input }
+    ? { important: true, rigor: 'L3', executionMode: 'collaborative', security: 'planned', independentVerify: 'planned', ...input }
     : input;
   return createTask(createState(), withChoices);
 }
@@ -548,14 +550,74 @@ test('the packet may be supplied at create time instead', () => {
   const done = completeStage(claimed, created.task.id, created.task.assignedAgent, {}).state;
   assert.equal(done.tasks[created.task.id].phase, 'implement');
 });
+
+// ── the other grades, and the L1 rung of the rigor ladder ────────────────────────────
+test('E2 must name a peer, and the peer must not be the author', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'peer', rigor: 'L1' });
+  const claimed = claimTask(created, task.id, task.assignedAgent).state;
+  const payload = (ev) => ({ evidence: ev, spec: 's', acceptance: 'a' });
+  assert.throws(
+    () => completeStage(claimed, task.id, task.assignedAgent, payload({ grade: 'E2', text: 'looks right' })),
+    /must name the peer/,
+  );
+  assert.throws(
+    () => completeStage(claimed, task.id, task.assignedAgent, payload({ grade: 'E2', text: 'x', checkedBy: task.assignedAgent })),
+    /must differ from the author/,
+  );
+  const ok = completeStage(claimed, task.id, task.assignedAgent,
+    payload({ grade: 'E2', text: 're-ran it', checkedBy: 'someone-else', steps: 'node --test' })).state;
+  assert.equal(ok.tasks[task.id].evidence.at(-1).grade, 'E2');
+});
+
+test('E4 must say what is planned', () => {
+  const state = createState();
+  const { state: created, task } = createTask(state, { title: 'planned', rigor: 'L1' });
+  const claimed = claimTask(created, task.id, task.assignedAgent).state;
+  assert.throws(
+    () => completeStage(claimed, task.id, task.assignedAgent, { evidence: { grade: 'E4', text: 'later' }, spec: 's', acceptance: 'a' }),
+    /say what is planned/,
+  );
+  const ok = completeStage(claimed, task.id, task.assignedAgent,
+    { evidence: { grade: 'E4', plan: 'run the suite after the refactor' }, spec: 's', acceptance: 'a' }).state;
+  assert.equal(ok.tasks[task.id].evidence.at(-1).grade, 'E4');
+});
+
+test('L1 may be self-verified, L2 may not', () => {
+  const pack = { spec: 's', acceptance: 'a' };
+  // L1: the implementer completes the verify stage, and the record says so.
+  const l1 = createTask(createState(), { title: 'local', rigor: 'L1' });
+  const done = driveToDone(l1.state, l1.task.id, 'ran the unit tests: exit 0');
+  assert.equal(done.tasks[l1.task.id].phase, 'done');
+  assert.equal(done.tasks[l1.task.id].verification.selfVerified, true);
+  assert.equal(
+    done.tasks[l1.task.id].verification.by,
+    done.tasks[l1.task.id].evidence.at(-1).agent,
+    'for L1 the verifier is the implementer',
+  );
+  // L2: verification must come from a different agent, so the same walk cannot even reach verify.
+  const l2 = createTask(createState(), { title: 'shared', rigor: 'L2' });
+  const l2done = driveToDone(l2.state, l2.task.id, 'ran the suite: exit 0');
+  assert.equal(l2done.tasks[l2.task.id].phase, 'done');
+  const verdict = l2done.tasks[l2.task.id].verification;
+  assert.notEqual(verdict.by, undefined);
+  assert.ok(!verdict.selfVerified, 'L2 must not be self-verified');
+  assert.ok(pack);
+});
 // ── the intake gate must not answer for the user ─────────────────────────────────────
 test('a task with an external action must state all three start choices', () => {
   const state = createState();
+  // Refused either because it is not L3 or because the three choices are missing - both are the
+  // point: an external action has to be consequential AND explicitly answered for.
   assert.throws(
     () => createTask(state, { title: 'deploy', type: 'build', externalAction: 'deploy' }),
+    /must be L3|requires all three start choices/,
+  );
+  assert.throws(
+    () => createTask(state, { title: 'deploy', type: 'build', rigor: 'L3', externalAction: 'deploy' }),
     /requires all three start choices/,
   );
-  const ok = createTask(state, { title: 'deploy', type: 'build', externalAction: 'deploy', important: true,
+  const ok = createTask(state, { title: 'deploy', type: 'build', rigor: 'L3', externalAction: 'deploy', important: true,
     executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
   assert.equal(ok.task.startChoicesSource, 'stated');
 });
@@ -626,11 +688,16 @@ test('rigor defaults to L2 and must be a level the engine accepts', () => {
   assert.throws(() => createTask(state, { title: 'bad', rigor: 'L9' }), /Invalid rigor/);
 });
 
-test('an external action can never be filed as L1 (local)', () => {
+test('an external action must be L3 - L1 and L2 are both refused', () => {
   const state = createState();
   assert.throws(
     () => createTask(state, { title: 'deploy', rigor: 'L1', externalAction: 'deploy' }),
-    /cannot be L1/,
+    /must be L3/,
+  );
+  assert.throws(
+    () => createTask(state, { title: 'deploy', rigor: 'L2', externalAction: 'deploy' }),
+    /must be L3/,
+    'L2 only requires a different verifier, which is not enough for something irreversible',
   );
   const ok = createTask(state, { title: 'deploy', rigor: 'L3', externalAction: 'deploy', important: true,
     executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
