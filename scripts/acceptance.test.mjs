@@ -44,6 +44,9 @@ const MUST_ENGAGE = [
   '我们需要独立核验这个实现',
   'we need multi-agent orchestration',
   'coordinate agents with a single-writer rule',
+  // Found by the independent verifier: people name the models instead of saying "agent".
+  '让 Claude 和 GPT 一起把这个功能做了',
+  '让 Gemini 和 Copilot 一起干活',
 ];
 
 // Ordinary requests that merely contain a word the skill also uses. Engaging here is worse
@@ -56,6 +59,9 @@ const MUST_NOT_ENGAGE = [
   '云成本优化方案怎么做',
   '我们团队分工一下这个需求',
   'just a question about regex',
+  // Also found by the verifier: a generic word and a bare plural both look like the real thing.
+  '这个协作办公软件的需求文档帮我写一下',
+  '帮我把这三个 AI 模型的对比评测整理成表格',
 ];
 
 test('activation engages on how people describe the problem', () => {

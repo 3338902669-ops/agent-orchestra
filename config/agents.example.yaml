@@ -35,7 +35,8 @@ activation:
     - 多智能体
     - agent协作
     - 智能体协作
-    - 协作
+    - 多agent协作
+    - 多智能体协作
     - 交接
     - 接力干活
     - 换助手
@@ -52,8 +53,15 @@ activation:
   # vocabulary the skill itself uses. Deliberately single-quoted so YAML leaves the
   # backslashes alone.
   patterns:
-    - '(多|几|两|三|四|五|六|\d+)\s*个?\s*(ai|agent|代理|助手|智能体|机器人|模型)'
-    - '(ai|agent|代理|助手|智能体)[^。！？,.，]{0,12}(一起|同时|共同|协同|配合)'
+    # A plural count of agents only counts when it is about DOING something. "三个 AI 模型的
+    # 对比评测" is a lookalike; "我要用三个 AI 一起做" is the real thing. The negative
+    # lookahead is what separates them, and a model comparison must not engage.
+    - '(多|几|两|三|四|五|六|\d+)\s*个?\s*(ai|agent|代理|助手|智能体)(?!\s*(的|模型|软件|产品|工具|平台|服务|对比|评测|测评|排名|价格|方案|供应商|公司))'
+    - '(ai|agent|代理|助手|智能体)[^。！？,.，]{0,12}(一起|同时|共同|协同|配合|分别)'
+    # People name the models. "让 Claude 和 GPT 一起做" is multi-agent work with no generic
+    # agent word in sight, so the names have to be in the vocabulary.
+    - '(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)[^。！？,.，]{0,20}(和|与|跟|、)[^。！？,.，]{0,20}(claude|gpt|gemini|copilot|deepseek|qwen|grok|llama|kimi|mistral|通义|文心|豆包|混元|智谱)'
+    - '(让|叫|请|用|派)[^。！？,.，]{0,24}(和|与|跟|、)[^。！？,.，]{0,24}(一起|同时|共同|分别|协作|配合)'
     - '(换个?|再换个?|换一?个)\s*(助手|ai|agent|代理|模型|工具)'
     - '(互相|相互|彼此)\s*(覆盖|冲突|打架|撞车|改乱)'
     - '同一个文件|同一份文件'
