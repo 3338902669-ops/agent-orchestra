@@ -1,5 +1,21 @@
 # Agent Orchestra
 
+> **The difference is enforcement.** Every rule below is a check in code, not advice in a prompt. The engine refuses the
+> operation; it does not ask the agent to remember.
+>
+> - **One writer per RESOURCE**, not just per task: `--resources src/a.ts,src/b.ts`. A second task claiming an
+>   overlapping resource is refused, and the refusal names the holder.
+> - **A verification PASS must carry its witness.** The verifier is never the implementer, and the pass arrives with
+>   criterion-linked evidence - stored as the verifier's witness, never as their own evidence.
+> - **Three failed rounds block the task** instead of retrying forever.
+> - **An external action cannot be dispatched until it is approved** - and the approval scope must cover the action.
+> - **Consequential work (L3) gets a domain review** from a third party who neither implemented nor verified it.
+> - **One gate command that can fail:** `node scripts/gate.mjs` injects ten known faults and must reject every one of
+>   them before it reports PASS.
+> - Zero dependencies, Node 18+, MIT. 87 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation cases.
+>
+> 中文对照：`references/zh-contrast.md`
+
 One portable, capability-first protocol for multi-agent work along **two axes**: coordinating a team inside one batch of tasks, and handing that work across sessions, tools and days without losing state. It ships explicit ownership, independent verification, graded evidence, deterministic dispatch, a shared handoff record and token-aware routing.
 
 <p align="center"><img src="og-image.png" alt="Agent Orchestra" width="600"></p>
@@ -31,6 +47,13 @@ One portable, capability-first protocol for multi-agent work along **two axes**:
 - enforces a **verification gate**: a failed verify sends the task back to implement and it can neither reach done nor be dispatched to evidence until a verify passes or a human records an override with approver, scope and reason
 - grades every claim E1 (reproducible) through E4 (planned), so self-assertion cannot pose as evidence
 - asks the user three questions before an important task starts (solo vs collaborative, security scan, independent verification) and never defaults them
+- **refuses a conflicting claim on the same resource**, naming the task and agent that hold it
+- **requires a witness for every verification PASS** and stores it on the verification record, which is what keeps L3's
+  "the verifier produced none of the evidence" from contradicting "verification needs evidence"
+- **blocks a task after three failed verifications** until a coordinator recovers it, reading the ceiling from policy
+  rather than hard-coding it
+- **gates dispatch on approval, scope included**: an approval for staging does not unlock a production deploy
+- **runs a domain review for consequential work** - a third agent who neither implemented nor verified it, with its own record
 - adds a stronger pipeline for important and critical work: independent verification, domain review, and explicit approval for external actions
 - runs a deterministic queue: `specify -> implement -> verify -> evidence -> done`, claim locks, dry-run dispatch, per-scope `approve` for deploy/publish/send/upload/delete
 - refuses to disguise an undispatchable task as success (non-zero exit code)
@@ -50,9 +73,32 @@ For keyword mode, run the trigger detector before starting:
 
     node scripts/detect-trigger.mjs --text "<task text>" --config config/agents.example.yaml
 
-Exit code 0 means ENGAGED (use the skill); 1 means NOT_ENGAGED. Exclude keywords veto engagement even when a trigger matched.
+Three answers, not two: **0** ENGAGED (a curated keyword plus an act of coordinating), **3** POSSIBLE (ambiguous - the
+caller decides), **1** NOT_ENGAGED (silent). Comparison and evaluation requests never auto-engage, and the veto markers are
+phrases rather than single characters, because a false veto silently drops a real request. `exclude_keywords` vetoes
+engagement even when a trigger matched.
 
-## The seven non-negotiables
+## The ten invariants
+
+Each one is a check in the engine with a test behind it, not a sentence an agent is asked to respect.
+
+| # | Invariant | Where it is enforced |
+|---|---|---|
+| I1 | **One owner per task** - a stage is held by exactly one agent at a time | `claimTask`, `requireOwner` |
+| I2 | **One writer per RESOURCE** - a conflicting claim is refused and names the holder | `claimTask`, resource overlap check |
+| I3 | **No implementer verifies its own L2/L3 work** - and an important task may not self-verify even at L1 | `completeStage` |
+| I4 | **A verification PASS must carry its witness** | `completeStage` (verify) |
+| I5 | **A failed verification blocks downstream** - no `done`, no dispatch to evidence | `failVerification`, `nextDispatch` |
+| I6 | **Three failed rounds block the task** for a coordinator to recover | `failVerification` + `policy.maxVerificationAttempts` |
+| I7 | **L2 and L3 need graded evidence** before `done` | `completeStage` (evidence) |
+| I8 | **L3 needs E1 evidence and a verifier that produced none of it**, plus a domain review by a third party | `completeStage` (evidence, domain_review) |
+| I9 | **An external action needs a matching approval** before dispatch | `nextDispatch` |
+| I10 | **`done` requires every applicable gate to be satisfied** | the stage machine |
+
+Two honest boundary markers, both written down as known findings rather than hidden: the queue is a plain JSON
+ledger (a discipline, not a security boundary - F-011), and E1 checks that a command, its exit code and a revision are
+recorded, not that the command ran (F-012).
+
 
 1. One primary writer per file or resource at a time.
 2. Verifier != implementer - and the verifier is the best-suited eligible agent by capability score, never a fixed name.
@@ -61,6 +107,9 @@ Exit code 0 means ENGAGED (use the skill); 1 means NOT_ENGAGED. Exclude keywords
 5. No completion claim without criterion-linked evidence.
 6. Irreversible and external actions need separate, explicit user approval (`approve`), which passing verification does not grant.
 7. The human-readable shared record outranks the queue.
+8. Consequential work is reviewed by someone in the domain who did none of the work.
+9. Rigor is chosen from the blast radius, not from how interesting the task is.
+10. Every rule here is either enforced or listed as an accepted limitation - nothing in between.
 
 ## Roster (any size)
 
