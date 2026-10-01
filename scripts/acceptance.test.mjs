@@ -53,14 +53,17 @@ const MUST_NOT_ENGAGE = ACTIVATION_CASES.mustNotEngage;
 const KNOWN_FALSE_ENGAGE = ACTIVATION_CASES.knownLimits;
 const AMBIGUOUS = ACTIVATION_CASES.ambiguous;
 
+const codeOf = (text) => run('scripts/detect-trigger.mjs', ['--config', cli('config/agents.example.yaml'), '--text', text]).code;
+
 test('activation engages on how people describe the problem', () => {
-  const missed = MUST_ENGAGE.filter((t) => !engages(t).engaged);
-  assert.deepEqual(missed, [], 'these must engage but did not: ' + JSON.stringify(missed));
+  // Every entry has an exact expected code, so a case cannot drift between categories unnoticed.
+  const wrong = MUST_ENGAGE.map((t) => ({ t, code: codeOf(t) })).filter((x) => x.code !== 0);
+  assert.deepEqual(wrong, [], 'these must exit 0 (ENGAGED): ' + JSON.stringify(wrong));
 });
 
 test('activation stays silent on ordinary requests that share a word', () => {
-  const falseHits = MUST_NOT_ENGAGE.filter((t) => engages(t).engaged);
-  assert.deepEqual(falseHits, [], 'these must NOT engage but did: ' + JSON.stringify(falseHits));
+  const wrong = MUST_NOT_ENGAGE.map((t) => ({ t, code: codeOf(t) })).filter((x) => x.code !== 1);
+  assert.deepEqual(wrong, [], 'these must exit 1 (NOT_ENGAGED): ' + JSON.stringify(wrong));
 });
 
 test('known limitation F-008: meta-discourse about collaboration still engages', () => {
@@ -78,10 +81,7 @@ test('ambiguous requests are surfaced as POSSIBLE, never guessed', () => {
   // Seven verification rounds showed that comparing models and coordinating models share every
   // word; a deterministic filter cannot tell them apart. The contract is therefore three-valued:
   // these exit 3 so the caller decides, instead of being silently misclassified either way.
-  const wrong = AMBIGUOUS.map((t) => {
-    const r = run('scripts/detect-trigger.mjs', ['--config', cli('config/agents.example.yaml'), '--text', t]);
-    return { t, code: r.code };
-  }).filter((x) => x.code !== 3);
+  const wrong = AMBIGUOUS.map((t) => ({ t, code: codeOf(t) })).filter((x) => x.code !== 3);
   assert.deepEqual(wrong, [], 'these must return exit 3 (POSSIBLE): ' + JSON.stringify(wrong));
   assert.ok(AMBIGUOUS.length >= 5);
 });

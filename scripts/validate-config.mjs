@@ -137,11 +137,11 @@ if (/^\s+mode:\s*keyword\s*$/m.test(yaml)) {
       errors.push('activation.' + key + ' must be a non-empty list (pattern engagement requires an agent subject AND an act of coordinating)');
     }
   }
-  for (const key of ['comparison_words', 'collaboration_words']) {
-    const list = inlineList(key);
-    if (!list || list.length === 0) {
-      errors.push('activation.comparison_veto.' + key + ' must be a non-empty list, or the veto silently never fires');
-    }
+  // One list, one job: any comparison word downgrades the sentence to POSSIBLE (or silence), so an
+  // empty list would silently restore auto-engagement on comparison requests.
+  const comparisonWords = inlineList('comparison_words');
+  if (!comparisonWords || comparisonWords.length === 0) {
+    errors.push('activation.comparison_veto.comparison_words must be a non-empty list, or a comparison request can be auto-engaged again');
   }
 }
 

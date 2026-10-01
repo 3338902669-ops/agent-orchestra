@@ -22,6 +22,7 @@ function parseArgs(argv) {
     if (a === '--text') { args.text = argv[++i]; }
     else if (a === '--config') { args.config = argv[++i]; }
     else if (a === '--mode') { args.mode = argv[++i]; }
+    else if (a === '--dump-config') { args.dumpConfig = true; }
   }
   return args;
 }
@@ -117,8 +118,6 @@ function decide(cfg, text) {
   // unambiguous case.
   const veto = cfg.comparison_veto ?? {};
   const comparisons = (veto.comparison_words ?? []).filter((w) => hay.includes(norm(w)));
-  const attributeNouns = (veto.attribute_nouns ?? []).filter((w) => hay.includes(norm(w)));
-  const escapeActs = (veto.collaboration_words ?? []).filter((w) => hay.includes(norm(w)));
   const possible = (reason, extra = {}) => ({ engaged: false, possible: true, reason, ...extra });
   const notEngaged = (reason, extra = {}) => ({ engaged: false, possible: false, reason, ...extra });
 
@@ -135,19 +134,18 @@ function decide(cfg, text) {
   const subjects = [...anchors, ...objects];
   const patternHits = gated ? (subjects.length && acts.length ? allPatternHits : []) : allPatternHits;
 
+  // A comparison word means the sentence is never ENGAGED, full stop. Earlier versions tried to
+  // let a "strong action" release this (各自写完再对比) and to guard against compared attributes
+  // with word lists and character windows; eight verification rounds showed that every such escape
+  // becomes the next hole, because the metric nouns are unbounded ("速度/延迟/准确率/得分/吞吐量")
+  // and the action words are interchangeable. Downgrading is always safe - the worst case is that
+  // the caller decides on a sentence it could have decided anyway - whereas a wrong ENGAGED is a
+  // wrong decision the filter made on its own.
   if (comparisons.length > 0) {
-    if (attributeNouns.length > 0) {
-      // A comparison word plus a capability noun: the sentence is measuring an ability, whichever
-      // order the words arrive in and however far apart they sit.
-      return possible('compares a capability (' + comparisons[0] + ' + ' + attributeNouns[0] + ')', { comparisons });
-    }
-    if (escapeActs.length === 0 && (hits.length || allPatternHits.length || acts.length)) {
+    if (hits.length || allPatternHits.length || acts.length) {
       return possible('comparison wording alongside coordination wording (' + comparisons[0] + ')', { comparisons });
     }
-    if (escapeActs.length === 0) {
-      return notEngaged('comparison/evaluation request, not orchestration (' + comparisons.join(', ') + ')', { comparisons });
-    }
-    // A strong action is present ("各自写完再对比"): fall through and engage normally.
+    return notEngaged('comparison/evaluation request, not orchestration (' + comparisons.join(', ') + ')', { comparisons });
   }
 
   if (cfg.match === 'all') {
@@ -180,6 +178,15 @@ function decide(cfg, text) {
 }
 
 const args = parseArgs(process.argv);
+
+// --dump-config prints exactly what the parser read. A config that looks right but parses empty is
+// how the comparison veto silently stopped working once; being able to see the parse is the fix.
+if (args.dumpConfig) {
+  const path = args.config || (fs.existsSync('config/agents.example.yaml') ? 'config/agents.example.yaml' : null);
+  console.log(JSON.stringify(path ? readYamlSection(path) : { error: 'no config found' }, null, 2));
+  process.exit(0);
+}
+
 let text = args.text || '';
 if (!text && !process.stdin.isTTY) {
   text = fs.readFileSync(0, 'utf8').trim();
