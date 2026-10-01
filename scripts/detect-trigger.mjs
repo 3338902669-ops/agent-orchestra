@@ -32,7 +32,7 @@ function readYamlSection(file) {
   const lines = raw.split(/\r?\n/);
   const out = {
     mode: 'keyword', match: 'any', case_sensitive: false,
-    keywords: [], patterns: [], exclude_keywords: [], agent_anchors: [], coordination_acts: [],
+    keywords: [], patterns: [], exclude_keywords: [], agent_anchors: [], software_objects: [], coordination_acts: [],
     comparison_veto: { comparison_words: [], collaboration_words: [] },
   };
   let inActivation = false, inList = null;
@@ -63,6 +63,7 @@ function readYamlSection(file) {
       comparison_words: 'comparison_veto.comparison_words',
       collaboration_words: 'comparison_veto.collaboration_words',
       agent_anchors: 'agent_anchors',
+      software_objects: 'software_objects',
       coordination_acts: 'coordination_acts',
     }[key];
     if (raw.startsWith('[')) {
@@ -126,25 +127,27 @@ function decide(cfg, text) {
   // subject AND an act of coordinating. "两个同事同时改同一个文件" matches the file-sharing
   // pattern but names no agent, so it stays silent - which is the point.
   const anchors = (cfg.agent_anchors ?? []).filter((w) => hay.includes(norm(w)));
+  const objects = (cfg.software_objects ?? []).filter((w) => hay.includes(norm(w)));
   const acts = (cfg.coordination_acts ?? []).filter((w) => hay.includes(norm(w)));
   const gated = (cfg.agent_anchors ?? []).length > 0;
-  const patternHits = gated ? (anchors.length && acts.length ? allPatternHits : []) : allPatternHits;
+  const subjects = [...anchors, ...objects];
+  const patternHits = gated ? (subjects.length && acts.length ? allPatternHits : []) : allPatternHits;
 
   if (cfg.match === 'all') {
     const missingKeywords = (cfg.keywords ?? []).filter((k) => !hay.includes(norm(k)));
     const missingPatterns = compilePatterns(cfg).filter((p) => !p.re.test(text)).map((p) => p.source);
     const all = missingKeywords.length === 0 && missingPatterns.length === 0;
     return all
-      ? { engaged: true, reason: 'all keywords and patterns matched', anchors, acts, hits, patternHits }
-      : { engaged: false, reason: 'match=all but not every signal matched', anchors, acts, hits, patternHits };
+      ? { engaged: true, reason: 'all keywords and patterns matched', anchors, objects, acts, hits, patternHits }
+      : { engaged: false, reason: 'match=all but not every signal matched', anchors, objects, acts, hits, patternHits };
   }
 
-  if (hits.length === 0 && allPatternHits.length > 0 && gated && !(anchors.length && acts.length)) {
+  if (hits.length === 0 && allPatternHits.length > 0 && gated && !(subjects.length && acts.length)) {
     return {
       engaged: false,
-      reason: 'a coordination phrase without an agent subject or an act of coordinating'
-        + (anchors.length ? '' : ' (no agent named)') + (acts.length ? '' : ' (no act of coordinating)'),
-      anchors, acts,
+      reason: 'a coordination phrase without a subject (agent or artifact) or without an act of coordinating'
+        + (subjects.length ? '' : ' (no agent or artifact named)') + (acts.length ? '' : ' (no act of coordinating)'),
+      anchors, objects, acts,
     };
   }
   if (hits.length === 0 && patternHits.length === 0) {

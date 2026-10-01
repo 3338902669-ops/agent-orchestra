@@ -55,6 +55,9 @@ const MUST_ENGAGE = [
   // Round 3: real coordination was being missed because the collaboration list lacked 各.
   '让两个 agent 各写一个版本，最后我来对比哪个好',
   '让 Claude 和 GPT 各做一个模块，最后我看下哪个做得好',
+  // Round 4: the ambiguous keywords moved into patterns, so these still work WITH a subject.
+  '把任务交接给下一个 agent',
+  '让另一个 agent 做独立核验',
 ];
 
 // Ordinary requests that merely contain a word the skill also uses. Engaging here is worse
@@ -82,6 +85,22 @@ const MUST_NOT_ENGAGE = [
   '帮我 compare 一下这三个大模型谁更适合',
   '两个实习生互相覆盖对方的代码',
   '两个同事同时改同一个文件',
+  // Round 4: ambiguous keywords used to bypass the conjunction entirely.
+  '帮我们交接一下工作',
+  '帮我做一份独立核验报告',
+  '这个项目需要第三方独立复核',
+  // Round 4: a generic work verb used to be enough once an agent word appeared.
+  '选一个 AI 助手来写代码',
+];
+
+// Known limitation F-008, asserted rather than hidden: a request to produce content ABOUT
+// multi-agent collaboration still engages, because the sentence legitimately contains an agent
+// subject and an act of coordinating ("write an article about how AI assistants collaborate").
+// The cost is a needless skill load, not a reorganised workflow, and the register records it.
+// If this ever changes, the test fails and the register entry is revisited.
+const KNOWN_FALSE_ENGAGE = [
+  '写一篇关于 AI 助手如何协同的文章',
+  '做 AI 一起协作的调研',
 ];
 
 test('activation engages on how people describe the problem', () => {
@@ -92,6 +111,17 @@ test('activation engages on how people describe the problem', () => {
 test('activation stays silent on ordinary requests that share a word', () => {
   const falseHits = MUST_NOT_ENGAGE.filter((t) => engages(t).engaged);
   assert.deepEqual(falseHits, [], 'these must NOT engage but did: ' + JSON.stringify(falseHits));
+});
+
+test('known limitation F-008: meta-discourse about collaboration still engages', () => {
+  const engaged = KNOWN_FALSE_ENGAGE.filter((t) => engages(t).engaged);
+  assert.equal(
+    engaged.length,
+    KNOWN_FALSE_ENGAGE.length,
+    'F-008 changed shape: ' + JSON.stringify(KNOWN_FALSE_ENGAGE.filter((t) => !engages(t).engaged)) +
+      ' no longer engages - if that is an improvement, update KNOWN-FINDINGS.md and this test',
+  );
+  assert.match(readFileSync(cli('KNOWN-FINDINGS.md'), 'utf8'), /F-008/, 'F-008 must be registered');
 });
 
 test('the detector fails loudly when the config has no signals', () => {

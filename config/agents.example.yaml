@@ -15,6 +15,10 @@ activation:
   # requests ("编排" for k8s, "验收" for a QA report, "分工" for people, "verifier" for a
   # function parameter) causes false activation, and engaging on the wrong task is worse
   # than not engaging at all.
+  # Only phrases that carry their own agent/model subject, or an unambiguous English term.
+  # Ambiguous words (交接 / 独立核验 / 接力 / 报告-ish terms) are NOT here: they would bypass the
+  # conjunction below and engage on pure human contexts ("帮我们交接一下工作"). They live in
+  # patterns, where an agent subject and an act of coordinating are required.
   keywords:
     - multi-agent
     - multi agent
@@ -27,7 +31,6 @@ activation:
     - single writer
     - independent verification
     - verifier agent
-    - handoff
     - agent handoff
     - 多agent
     - 多 agent
@@ -37,18 +40,9 @@ activation:
     - 智能体协作
     - 多agent协作
     - 多智能体协作
-    - 交接
-    - 接力干活
     - 换助手
     - 换个助手
-    - 交接班
-    - 独立核验
-    - 独立复核
     - 单写入者
-    - 重要任务
-    - 关键任务
-    - 省token
-    - 节省token
   # Regular expressions for INTENT and spoken variants. These are what make the skill engage
   # on how a person describes the problem ("两个 AI 改同一个文件") instead of on the
   # vocabulary the skill itself uses. Deliberately single-quoted so YAML leaves the
@@ -59,7 +53,17 @@ activation:
   # are people, not agents - and enumerating comparison synonyms to catch the lookalikes is a race
   # that cannot be won. Requiring the subject is the structural fix.
   agent_anchors: [ai, agent, bot, 代理, 助手, 智能体, 大模型, 大语言模型, 模型, claude, gpt, gemini, copilot, deepseek, qwen, grok, llama, kimi, mistral, 通义, 文心, 豆包, 混元, 智谱]
-  coordination_acts: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力, 交接, 核验, 复核, 互相, 覆盖, 冲突, 同一个文件, 同一份文件, 一起做, 改, 写, 编辑, 做, 干, 跑]
+  # The subject does not have to be an agent: verifying a software artifact is this skill's own
+  # practice ("我们需要独立核验这个实现"), while "做一份独立核验报告" and "第三方独立复核项目" are
+  # human QA/audit work and must stay silent. Naming the artifact is what separates them.
+  # Artifact nouns that imply a verification context. 代码/改动/功能 are deliberately absent: they
+  # pair with the human-overwrite patterns ("两个实习生互相覆盖对方的代码"), so admitting them as a
+  # subject would let people back in through the artifact door.
+  software_objects: [实现, 版本, 提交, 模块, 接口, 分支, 补丁, pr, pull request]
+  # Deliberately NO generic work verbs (写/做/改/跑/编辑). They are amplifiers: "写一篇关于 AI
+  # 助手如何协同的文章" and "选一个 AI 助手来写代码" both凑齐了 anchor+verb while being nothing of
+  # the sort. Coordination is the signal, doing is not.
+  coordination_acts: [一起, 一块儿, 同时, 共同, 协作, 协同, 配合, 分工, 分别, 各自, 各, 并行, 接力, 交接, 交接班, 核验, 复核, 互相, 覆盖, 冲突, 同一个文件, 同一份文件]
   patterns:
     # A plural count of agents counts only when it is about agents DOING something. "三个 AI 模型的
     # 对比评测" is a lookalike; "我要用三个 AI 一起做" is the real thing. The negative lookahead
@@ -80,6 +84,9 @@ activation:
     - '(agent|ai|代理|助手|智能体|大模型)[^。！？,.，]{0,10}(编排|分工|分配|调度|协同)'
     - '(独立|交叉|第三方|外部|另一个)\s*(核验|验证|复核|复验|检验|审查|签名)'
     - '(冲突|覆盖)(了|的)?\s*(代码|改动|文件|修改)'
+    # Moved out of keywords: ambiguous on their own, safe once an agent subject is required.
+    - '交接|交接班|接力干活'
+    - '(独立|交叉|第三方|外部|另一个)\s*(核验|复核|复验|复检)'
   # A request to compare, evaluate or choose between models/assistants is NOT orchestration, no
   # matter how many agent words it contains. The veto is sentence-level and only fires when the
   # sentence carries no collaboration signal of its own, so "让两个 agent 分别改，再对比结果"
