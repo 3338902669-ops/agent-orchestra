@@ -98,6 +98,23 @@ ownership:
   reviewers_may_write_isolated_artifacts: true
   on_conflict: stop_and_prefer_task_record     # the human-readable handoff record outranks the queue
 
+# ---- Roster: who can do what, how well, at what cost (any size, any names) ----
+# Data, not code: three agents work, and so do five or twelve. The ids below are
+# deliberately not generalist/frontend/specialist, to show that any name is routable.
+# The queue CLI reads the JSON form of this block: init --roster my-team.json
+roster:
+  agents:
+    planner:  { cost: 2, available: true, specialties: [],       scores: { specify: 3, triage: 1, implement: 1, verify: 1, evidence: 3, environment: 1 } }
+    builder:  { cost: 4, available: true, specialties: [full],   scores: { specify: 1, triage: 1, implement: 3, verify: 1, evidence: 1, environment: 1 } }
+    webhand:  { cost: 5, available: true, specialties: [web],    scores: { specify: 1, triage: 1, implement: 2, verify: 1, evidence: 1, environment: 2 } }
+    auditor:  { cost: 6, available: true, specialties: [verify], scores: { specify: 1, triage: 1, implement: 1, verify: 3, evidence: 2, environment: 1 } }
+    scribe:   { cost: 1, available: true, specialties: [],       scores: { specify: 1, triage: 0, implement: 1, verify: 0, evidence: 3, environment: 0 } }
+  routes:                     # optional: a stage named here is owned outright; anything omitted falls back to the scores
+    specify: planner
+    evidence: scribe
+    implement: { build: builder, web: webhand }
+
+
 # ---- Machine-readable queue (optional companion script) ----
 queue:
   enabled: false
@@ -114,6 +131,23 @@ approval:
   require_explicit_user_confirmation: true
   record_in: queue.approve        # task + scope, traceable to the user's confirmation
   verification_does_not_authorize_shipping: true
+
+# ---- Verification gate: a FAIL blocks done until a pass or a recorded override ----
+# The verifier is the highest-scoring eligible agent for verify, and the implementer is
+# excluded. If the best eligible candidate scores 0, the run fails closed.
+verification_gate:
+  verifier_selection: capability_score
+  implementer_excluded: true
+  unscored_verifier: fail_closed
+  failure_requires: criteria_or_findings   # a FAIL must say what failed
+  on_failure: return_to_implement          # the verifier never fixes the work itself
+  blocked_effects: [complete_to_done, dispatch_to_evidence]
+  soft_override: true                      # a human may pass a blocked gate deliberately
+  override_requires: [approvedBy, scope, reason]
+  override_available_when: blocked
+  override_keeps_failure_record: true      # status stays failed; the override sits beside it
+  override_is_not_evidence: true           # an override is a decision, not a passing verification
+
 
 evidence:
   grading: [E1_reproducible, E2_peer_check, E3_self_assertion, E4_planned]

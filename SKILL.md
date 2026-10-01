@@ -1,6 +1,6 @@
 ---
 name: multi-agent-orchestration
-description: Use when three or more AI agents are available and a task needs coordinated execution, capability-based role assignment, single-writer ownership, independent verification, evidence-graded completion, deterministic dispatch, or lower token/API cost. Ships a task-queue CLI, an important-task intake gate, and a coordination anti-pattern guide. Activation is configurable: global, keyword-triggered, or manual.
+description: Use when three or more AI agents are available and a task needs coordinated execution: capability-scored role assignment from a roster of any size (any agent names), single-writer ownership, a verification gate run by the best-suited agent that cannot be walked past, evidence-graded completion, deterministic dispatch, and lower token/API cost. Ships a task-queue CLI, an important-task intake gate, and a coordination anti-pattern guide. Activation is configurable: global, keyword-triggered, or manual.
 ---
 
 # Multi-Agent Orchestration
@@ -32,10 +32,11 @@ Configure in `config/agents.example.yaml` under `activation:`.
 ## Five non-negotiables
 
 1. **One primary writer per file or resource.** Everyone else is read-only or writes isolated artifacts until a recorded handoff promotes them.
-2. **Verifier != implementer.** An agent that wrote the implementation cannot certify it. Its self-check is E3, not a verification result.
-3. **No completion claim without criterion-linked evidence.** "I checked" is not evidence. See `references/evidence-grading.md`.
-4. **Irreversible actions need separate, explicit user approval.** Deploy, publish, send, upload, delete, account changes: approval must be recorded (`orchestrator.mjs approve`). *Verification passing does not equal authorization to ship.*
-5. **The human-readable handoff record outranks the queue.** If the queue state and the shared task record disagree, stop and follow the record; the queue is a scheduler, not the authority on intent.
+2. **Verifier != implementer.** An agent that wrote the implementation cannot certify it. Its self-check is E3, not a verification result. The verifier is the **best-suited eligible agent chosen by capability score**, never a fixed name.
+3. **The verification gate cannot be walked past.** A task that failed verification returns to `implement` and cannot reach `done` — not even be dispatched to `evidence` — until a verification passes or a human records an override with an approver, a scope **and** a reason. The failed result stays on the record.
+4. **No completion claim without criterion-linked evidence.** "I checked" is not evidence. See `references/evidence-grading.md`.
+5. **Irreversible actions need separate, explicit user approval.** Deploy, publish, send, upload, delete, account changes: approval must be recorded (`orchestrator.mjs approve`). *Verification passing does not equal authorization to ship.*
+6. **The human-readable handoff record outranks the queue.** If the queue state and the shared task record disagree, stop and follow the record; the queue is a scheduler, not the authority on intent.
 
 ## Important-task intake gate
 
@@ -58,7 +59,7 @@ See `references/important-task-intake.md`.
 3. Classify the task: routine / important / critical.
 4. Write a compact task packet: objective, non-goals, ownership, risks, acceptance tests, owner, verifier.
 5. Take the ownership lock before editing.
-6. Run the pipeline: `specify -> implement -> verify -> accept` (important adds an independent verifier; critical adds domain review + approval).
+6. Run the pipeline: `specify -> implement -> verify -> evidence -> done` (important adds an independent verifier; critical adds domain review + approval; the verify stage is a gate - see below).
 7. Stop on failed gates, ownership conflicts, missing evidence, or unapproved external actions.
 
 ## Roles
@@ -75,18 +76,56 @@ One agent may hold several roles on **routine** work only. Important work requir
 
 See `references/roles.md` and `references/routing-and-roles.md`.
 
+## Roster: three or more agents, any names
+
+Roles are assigned from a **roster**, which is data, not code. Three agents work; so do five, eight or twelve, and the agents can be called anything at all — nothing in the mechanism depends on an agent being named `coordinator` or `verifier`:
+
+```yaml
+agents:
+  planner: { cost: 2, specialties: [],       scores: { specify: 3, implement: 1, verify: 1, evidence: 3 } }
+  builder: { cost: 4, specialties: [full],   scores: { specify: 1, implement: 3, verify: 1, evidence: 1 } }
+  webhand: { cost: 5, specialties: [web],    scores: { specify: 1, implement: 2, verify: 1, evidence: 1 } }
+  auditor: { cost: 6, specialties: [verify], scores: { specify: 1, implement: 1, verify: 3, evidence: 2 } }
+  scribe:  { cost: 1, specialties: [],       scores: { specify: 1, implement: 1, verify: 0, evidence: 3 } }
+routes:                      # optional: anything omitted is resolved by score
+  specify: planner
+  evidence: scribe
+  implement: { build: builder, web: webhand }
+```
+
+- Scores are 0-3 per role. Selection is deterministic and reproducible: **highest score -> capability match in `specialties` -> lower `cost` -> agent id order**. `available: false` parks an agent without deleting it.
+- Stage owners come from `routes` when the roster names one, otherwise from the score. A roster that can fill no agent for a stage is rejected loudly, never routed by accident.
+- Install a roster of your own with `orchestrator.mjs init --roster <file.json>`.
+- Adding an agent is a data edit: declare it, score it, and it joins selection. No code change.
+
+## Verification gate
+
+Verification is a gate in the same sense as a security scan, except it is run by **an agent from your own team, chosen for the job** — no external tool and no particular vendor is required:
+
+- the verifier is the highest-scoring eligible agent for `verify`, and the implementer is **never** eligible (if nobody is scored above 0, the run fails closed instead of pretending);
+- completing the `verify` stage is a PASS; `fail` records the failing criteria and sends the task back to `implement` — the verifier never fixes the work itself;
+- the gate blocks two things: reaching `done` from `evidence`, and being dispatched to `evidence` at all;
+- a human can override deliberately with `override --task <id> --by <who> --scope <what> --reason <why>` — all three are required, and the failed result is kept next to the override rather than erased.
+
+See `references/task-queue.md` and `references/routing-and-roles.md`.
+
 ## Pipeline and queue
 
 Stage machine: `specify -> implement -> verify -> evidence -> done`, plus `blocked` and `recovery`.
 
 ```bash
+node scripts/orchestrator/orchestrator.mjs init --roster my-team.json         # 3, 5 or 12 agents
 node scripts/orchestrator/orchestrator.mjs create --title "Fix checkout" --type build --workspace "<workspace>"
 node scripts/orchestrator/orchestrator.mjs claim  --task task-0001 --agent implementer-a
-node scripts/orchestrator/orchestrator.mjs dispatch --task task-0001   # dry-run command only
+node scripts/orchestrator/orchestrator.mjs dispatch --task task-0001          # dry-run command only
+node scripts/orchestrator/orchestrator.mjs fail   --task task-0001 --agent verifier-b --criteria "test X fails"
+node scripts/orchestrator/orchestrator.mjs override --task task-0001 --by user --scope "release 2.1" --reason "pre-existing flake"
 node scripts/orchestrator/orchestrator.mjs approve --task task-0002 --by user --scope "deploy to production"
 ```
 
 - `dispatch` prints the command to run. It never launches an agent.
+- `fail` is the gate closing: the task goes back to `implement` with the failing criteria attached.
+- `override` is the only way past a failed gate, and it needs all three of approver, scope and reason.
 - A non-dispatchable task (blocked, no assignee, no command) fails with a non-zero exit code. Exit 0 must never disguise an undispatchable task.
 - `approve` is the only path for external actions, and it is per task and per scope.
 

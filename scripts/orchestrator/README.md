@@ -5,8 +5,8 @@ machine-readable task queue next to these files and moves each task through a fi
 stage machine, so a coordinating agent can hand work between roles without guessing.
 
 It does **not** replace handoff notes: those stay the human-readable record. This tool
-only tracks stages, the single-writer lock, routing, capability labels, start choices
-and external-action approvals.
+only tracks stages, the single-writer lock, routing, capability labels, start choices,
+the verification gate and external-action approvals.
 
 | File | Purpose |
 |---|---|
@@ -25,13 +25,19 @@ Requires Node 18+ (uses `structuredClone` and `node:test`). No npm install is ne
 | type | flow |
 |---|---|
 | `build` (default) | generalist specify -> generalist implement -> specialist verify -> generalist evidence -> done |
-| `web` | generalist specify -> frontend implement -> generalist verify -> generalist evidence -> done |
+| `web` | generalist specify -> frontend implement -> specialist verify -> generalist evidence -> done |
 | `complex` | generalist specify -> specialist implement -> generalist verify -> generalist evidence -> done |
 | `verify` | generalist specify -> specialist implement/independent review -> generalist verify -> generalist evidence -> done |
-| `environment` | generalist specify -> frontend triage -> frontend implement -> generalist verify -> generalist evidence -> done |
+| `environment` | generalist specify -> frontend triage -> frontend implement -> specialist verify -> generalist evidence -> done |
 
-The verify owner is always derived so that **verifier != implementer**. Completing a
-stage releases the lock and re-queues the task for the next owner.
+The verify owner is always derived so that **verifier != implementer**: it is the
+highest-scoring eligible agent for `verify`, with the implementer excluded. If the best
+eligible candidate has a `verify` score of 0 the run fails closed instead of pretending an
+unscored agent can verify. Completing a stage releases the lock and re-queues the task for
+the next owner.
+
+The names above are the **default** roster. A roster is data - any size, any agent names,
+no code change (see Configuration) - and `init --roster <file.json>` installs one.
 
 ## Commands
 
@@ -40,6 +46,7 @@ inside `scripts/orchestrator/` (`node orchestrator.mjs ...`). The queue file is 
 relative to `orchestrator.mjs`, so the working directory does not matter.
 
     node orchestrator.mjs init
+    node orchestrator.mjs init --roster my-team.json     # any roster size, any agent names
     node orchestrator.mjs status
     node orchestrator.mjs create --title "<objective>" --type build --workspace "<workspace>/client"
     node orchestrator.mjs create --title "<objective>" --type web --capability web --workspace "<workspace>/site"
@@ -47,17 +54,23 @@ relative to `orchestrator.mjs`, so the working directory does not matter.
     node orchestrator.mjs complete --task task-0001 --agent generalist --evidence "spec written to the task packet"
     node orchestrator.mjs dispatch --task task-0001
     node orchestrator.mjs approve  --task task-0002 --by user --scope "deploy staging"
+    node orchestrator.mjs fail     --task task-0001 --agent specialist --criteria "acceptance test X fails"
+    node orchestrator.mjs override --task task-0001 --by user --scope "release 2.1" --reason "pre-existing flake"
     node orchestrator.mjs recover  --task task-0001 --reason "worker process ended during probe"
 
 Create flags: `--title` (required), `--type`, `--capability`, `--workspace`,
 `--external-action <kind>`, `--important`, `--execution-mode single|collaborative`,
 `--security planned|skip`, `--independent-verify planned|skip`.
 
+`complete` records the PASS when it completes the `verify` stage. `fail` records a failed
+verification and sends the task back to `implement`. `override` is the only way past a
+failed gate, and it needs `--by`, `--scope` **and** `--reason`.
+
 ## Output fields
 
 `create` prints the task record: `id`, `title`, `type`, `capability`, `workspace`,
 `phase`, `assignedAgent`, `status`, `important`, `startChoices`, `lock`,
-`externalAction`, `evidence`, timestamps.
+`externalAction`, `evidence`, `verification`, timestamps.
 
 `dispatch` prints a dry-run record and nothing else:
 
@@ -71,6 +84,9 @@ Create flags: `--title` (required), `--type`, `--capability`, `--workspace`,
 | `requiresCoordinatorCoordination` | `true` when the owner is the `generalist` role |
 | `requiresHumanCoordination` | always `false`; a constant kept for callers |
 | `externalActionApproved` | `null` when the task has no external action, else the approval state |
+| `verificationStatus` | `pending` / `passed` / `failed` - where the verification gate stands |
+| `verificationBlocked` | `true` while a failed verification still holds the gate shut |
+| `verificationOverride` | `null`, or the recorded `approvedBy` / `scope` / `reason` and timestamp of an override |
 
 ## Safety boundary
 
@@ -84,6 +100,12 @@ Create flags: `--title` (required), `--type`, `--capability`, `--workspace`,
 - **Non-dispatchable tasks fail closed.** `done`, `blocked`, locked, agent-less or
   command-less tasks make `dispatch` throw and the CLI exit **1** — it never exits 0 to
   pretend the dispatch succeeded.
+- **The verification gate fails closed.** Completing `evidence` without a passed
+  verification throws (`verification has not passed`), and a task at `evidence` whose
+  verification is blocked with no override is not dispatchable (`is gated`). The only way
+  past a failed gate is `override --by <who> --scope <what> --reason <why>` - all three
+  required - and the override is recorded **next to** the failure: `status` stays `failed`,
+  so the failure is never erased.
 - **One writer per task.** `claim` takes an exclusive lock; a second agent is rejected
   until the stage completes or `recover` clears a stranded lock.
 - **External actions need an explicit approval record.** A task created with
@@ -103,7 +125,14 @@ non-dispatchable task) and the reason is printed on stderr as `orchestrator: <me
 - `COMMAND_TEMPLATES` in `lib.mjs` holds the per-agent dry-run command templates. They
   use a placeholder `agent-run` binary on purpose — replace them with your own runner.
   The orchestrator renders the text and stops there.
-- `AGENTS` in `lib.mjs` is the default roster (`generalist`, `frontend`, `specialist`).
+- `DEFAULT_ROSTER` / `AGENTS` in `lib.mjs` hold the default roster
+  (`generalist`, `frontend`, `specialist`). A roster is data: `init --roster <file.json>`
+  installs one of any size with any agent names, and `validateRoster` rejects a malformed
+  one loudly (unknown role, score outside 0-3, non-numeric `cost`, non-array
+  `specialties`, zero agents).
+- `DEFAULT_COMMAND_TEMPLATE` provides a dry-run argv for **any** agent id a roster
+  declares, so a team that is not called `generalist`/`frontend`/`specialist` is still
+  dispatchable.
 - The queue file defaults to `TASK-QUEUE.json` next to these files. Set
   `ORCHESTRATOR_STATE` to an explicit path (used by smoke tests so they do not write into
   the repository).
@@ -114,6 +143,8 @@ non-dispatchable task) and the reason is printed on stderr as `orchestrator: <me
     node --test scripts/orchestrator/lib.test.mjs
 
 The suite covers the stage machine for every type, the verifier-independence invariant,
-lock conflicts, capability derivation and validation, important-task start choices, the
-approval gate, recover semantics, dry-run dispatch and the fail-closed guards, plus
+lock conflicts, capability derivation and validation, roster genericity (any size, any
+agent names), important-task start choices, the approval gate, the verification gate
+(fail, override, fail-closed verifier selection), recover semantics, dry-run dispatch and
+the fail-closed guards, plus
 source-level checks that no absolute machine path and no process spawn exists.

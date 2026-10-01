@@ -28,6 +28,24 @@ jobs:
           node scripts/detect-trigger.mjs --text "just a question" && (echo "expected NOT_ENGAGED"; exit 1) || echo "expected NOT_ENGAGED"
       - name: Task queue tests
         run: node --test scripts/orchestrator/lib.test.mjs
+      - name: Verification gate smoke test
+        run: |
+          set -e
+          export ORCHESTRATOR_STATE="$(mktemp -d)/queue.json"
+          o() { node scripts/orchestrator/orchestrator.mjs "$@" > /dev/null; }
+          o init
+          o create --title gate --type build
+          o claim --task task-0001 --agent generalist
+          o complete --task task-0001 --agent generalist
+          o claim --task task-0001 --agent generalist
+          o complete --task task-0001 --agent generalist
+          o claim --task task-0001 --agent specialist
+          o fail --task task-0001 --agent specialist --criteria "acceptance test fails"
+          node -e 'const t=JSON.parse(require("fs").readFileSync(process.env.ORCHESTRATOR_STATE,"utf8")).tasks["task-0001"]; if (t.verification.blocked !== true || t.phase !== "implement") throw new Error("the gate did not close"); console.log("gate closed, task returned to implement")'
+          if node scripts/orchestrator/orchestrator.mjs override --task task-0001 --by user --scope ship 2>/dev/null; then echo "an override without a reason must be refused"; exit 1; fi
+          o override --task task-0001 --by user --scope ship --reason "pre-existing flake"
+          node -e 'const v=JSON.parse(require("fs").readFileSync(process.env.ORCHESTRATOR_STATE,"utf8")).tasks["task-0001"].verification; if (v.override?.reason !== "pre-existing flake" || v.status !== "failed") throw new Error("the override was not recorded next to the failure"); console.log("override recorded, failure kept on the record")'
+
       - name: Forbid private paths and secrets in shipped files
         run: |
           set -e

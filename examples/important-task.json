@@ -32,6 +32,17 @@
       "output": "M src/target.ts"
     }
   ],
+  "verification": {
+    "status": "pending",
+    "attempts": 0,
+    "blocked": false,
+    "lastResult": null,
+    "criteria": null,
+    "findings": null,
+    "at": null,
+    "by": null,
+    "override": null
+  },
   "state": "specified",
   "external_actions": { "approved": false, "scope": null, "approved_by": null }
 }

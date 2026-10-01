@@ -23,7 +23,9 @@ import {
   completeStage,
   createState,
   createTask,
+  failVerification,
   nextDispatch,
+  overrideVerificationGate,
   recoverTask,
 } from './lib.mjs';
 
@@ -64,6 +66,10 @@ function main(args) {
   const command = args[0];
   let state = load();
   if (command === 'init') {
+    // --roster <file> installs a team of any size (3 agents, 5, 12 - the shape is
+    // documented in the README). Without it the default three-agent roster is used.
+    const rosterPath = value(args, '--roster', false);
+    const roster = rosterPath ? JSON.parse(readFileSync(rosterPath, 'utf8')) : undefined;
     // Fail closed: a non-empty queue is only reset on an explicit --force, and the
     // previous contents are always backed up with a timestamp first.
     const taskCount = Object.keys(state.tasks ?? {}).length;
@@ -77,17 +83,19 @@ function main(args) {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backup = backupTarget(stamp);
       writeFileSync(backup, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-      state = createState();
+      state = createState(roster);
       save(state);
       return print({
         ok: true,
         reset: true,
         backedUpTasks: taskCount,
         backup: backup instanceof URL ? fileURLToPath(backup) : String(backup),
+        agents: Object.keys(state.roster.agents),
       });
     }
+    state = createState(roster);
     save(state);
-    return print({ ok: true, state: stateLabel() });
+    return print({ ok: true, state: stateLabel(), agents: Object.keys(state.roster.agents) });
   }
   if (command === 'status') return print(state);
   if (command === 'create') {
@@ -129,10 +137,29 @@ function main(args) {
     save(result.state);
     return print(result.task);
   }
+  // Verification gate: fail sends the task back to implement and keeps the gate shut.
+  if (command === 'fail') {
+    const result = failVerification(state, id, value(args, '--agent'), {
+      criteria: value(args, '--criteria', false),
+      findings: value(args, '--findings', false),
+    });
+    save(result.state);
+    return print(result.task);
+  }
+  // Soft gate: only with an approver, a scope AND a reason; the failure stays on record.
+  if (command === 'override') {
+    const result = overrideVerificationGate(state, id, {
+      approvedBy: value(args, '--by'),
+      scope: value(args, '--scope'),
+      reason: value(args, '--reason'),
+    });
+    save(result.state);
+    return print(result.task);
+  }
   // Dry run only: nextDispatch never spawns anything, and it throws for tasks that
   // must not be dispatched, which turns into a non-zero exit code below.
   if (command === 'dispatch') return print(nextDispatch(state, id));
-  throw new Error('Commands: init, status, create, claim, complete, recover, approve, dispatch');
+  throw new Error('Commands: init, status, create, claim, complete, recover, approve, fail, override, dispatch');
 }
 
 try {

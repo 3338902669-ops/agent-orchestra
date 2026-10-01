@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.1.0] - 2026-10-01
+
+The verifier is now chosen by capability score, verification is a real gate, and the
+roster is data of any size - three agents, twelve agents, any names.
+
+### Added
+- **Capability-scored verifier selection.** The verifier is the highest-scoring eligible agent for `verify`, with the implementer always excluded; ties break on a capability match, then lower cost, then agent id order. If nobody is scored above 0 the run fails closed instead of pretending an unscored agent can verify.
+- **Verification gate.** `fail --criteria/--findings` records the failure and returns the task to `implement`; the task can then neither reach `done` nor be dispatched to `evidence` until a verify passes. A deliberate `override --by --scope --reason` is the only way past it (all three required), and the failed result is kept next to the override.
+- `task.verification` record: status, attempts, blocked, lastResult, criteria, findings, who and when, override.
+- Dispatch records now carry `verificationStatus`, `verificationBlocked` and `verificationOverride`.
+- `DEFAULT_ROSTER` and `validateRoster()`: the roster is data (`agents` + optional `routes`), validated on load, any number of agents.
+- `selectAgent()`, `ownerFor()`, `selectVerifier()`, `implementerForType(type, roster)`; `init --roster <file.json>`; `fail` and `override` CLI commands.
+- `DEFAULT_COMMAND_TEMPLATE`: any agent id a roster declares is dispatchable, so teams whose agents are not called generalist/frontend/specialist work unchanged.
+
+### Changed
+- Stage owners are resolved from the roster instead of a hardcoded routing table: a roster that names no usable agent for a stage is rejected loudly rather than mis-routed.
+- `verifierFor('frontend')` is now `specialist` (score 3) rather than a fixed toggle - verification selection is scored, not alternating.
+- State schema is version 4. Older state files without a roster fall back to the default.
+
 ## [2.0.0] - 2026-10-01
 
 Coordinated operation hardened end to end: the protocol now carries a deterministic queue, an intake gate, graded evidence, and an explicit "verification is not authorization" boundary.

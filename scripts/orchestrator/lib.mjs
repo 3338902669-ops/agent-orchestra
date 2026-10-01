@@ -11,7 +11,7 @@
 // Every mutator is pure: it returns { state, task } with a copied state and never
 // mutates the state object it was handed. State is plain JSON (structuredClone-able).
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 /** Capability labels a task may carry. Describes which roles can be dispatched. */
 export const CAPABILITIES = ['full', 'web', 'complex', 'verify', 'environment'];
@@ -19,8 +19,62 @@ export const CAPABILITIES = ['full', 'web', 'complex', 'verify', 'environment'];
 /** Task types. The type decides routing; capability is an independent label. */
 export const TYPES = ['build', 'web', 'complex', 'verify', 'environment'];
 
-/** Agent identities used by the default routing table. Replace with your own roster. */
-export const AGENTS = ['generalist', 'frontend', 'specialist'];
+/** Roles a roster can score an agent for. */
+export const ROLES = ['specify', 'triage', 'implement', 'verify', 'evidence', 'environment'];
+
+/**
+ * The default roster. A roster is DATA - "who can do what, how well, at what cost":
+ *
+ *   agents: { <id>: { cost, available, specialties[], scores{ role -> 0..3 } } }
+ *   routes: optional explicit owners. Any name that is missing from `agents` is
+ *           ignored and resolution falls back to capability score.
+ *
+ * Nothing in the code requires the roster to have a particular size or particular
+ * names: 3 agents, 5 agents or 12 agents all work, and agents called anything at all
+ * are dispatchable. Scores are 0-3 (3 = direct tooling plus repeated evidence,
+ * 0 = unavailable or forbidden); `cost` breaks ties towards the cheaper agent;
+ * `specialties` hold capability labels (full|web|complex|verify|environment).
+ */
+export const DEFAULT_ROSTER = Object.freeze({
+  agents: {
+    generalist: { cost: 4, available: true, specialties: [], scores: { specify: 3, implement: 2, verify: 2, evidence: 3, environment: 1 } },
+    frontend: { cost: 3, available: true, specialties: ['web'], scores: { specify: 1, implement: 3, verify: 1, evidence: 1, environment: 1 } },
+    specialist: { cost: 6, available: true, specialties: ['complex', 'verify', 'environment'], scores: { specify: 2, implement: 3, verify: 3, evidence: 2, environment: 3 } },
+  },
+  routes: {
+    specify: 'generalist',
+    evidence: 'generalist',
+    triage: 'frontend',
+    implement: { build: 'generalist', web: 'frontend', complex: 'specialist', verify: 'specialist', environment: 'frontend' },
+  },
+});
+
+/** Agent identities in the default roster. */
+export const AGENTS = Object.keys(DEFAULT_ROSTER.agents);
+
+/**
+ * Validate a roster and fail loudly: a malformed custom roster must never silently
+ * downgrade routing. Accepts any number of agents (one or more).
+ */
+export function validateRoster(roster) {
+  const agents = roster?.agents;
+  if (!agents || typeof agents !== 'object' || Array.isArray(agents)) {
+    throw new Error('A roster must look like { agents: { <id>: {...} }, routes?: {...} }');
+  }
+  const ids = Object.keys(agents);
+  if (ids.length === 0) throw new Error('A roster must declare at least one agent');
+  for (const [id, agent] of Object.entries(agents)) {
+    if (!agent || typeof agent !== 'object') throw new Error(`Agent ${id} must be an object`);
+    if (agent.cost != null && typeof agent.cost !== 'number') throw new Error(`Agent ${id}: cost must be a number`);
+    if (agent.available != null && typeof agent.available !== 'boolean') throw new Error(`Agent ${id}: available must be a boolean`);
+    if (agent.specialties != null && !Array.isArray(agent.specialties)) throw new Error(`Agent ${id}: specialties must be an array`);
+    for (const [role, score] of Object.entries(agent.scores ?? {})) {
+      if (!ROLES.includes(role)) throw new Error(`Agent ${id}: unknown role "${role}" (allowed: ${ROLES.join(', ')})`);
+      if (typeof score !== 'number' || score < 0 || score > 3) throw new Error(`Agent ${id}: score for ${role} must be a number 0-3`);
+    }
+  }
+  return roster;
+}
 
 /** Pipeline stages in order. `triage` is only used by `environment` tasks. */
 export const STAGES = ['specify', 'triage', 'implement', 'verify', 'evidence', 'done'];
@@ -39,18 +93,55 @@ export const DEFAULT_START_CHOICES = Object.freeze({
   independentVerify: 'skip',
 });
 
-// Per-type routing table.
-//   triage    — optional extra stage handed to another agent (environment only).
-//   implement — who owns the implement stage for this type.
-// The specify stage is always owned by the coordinator ('generalist'); evidence
-// likewise. The verify owner is derived so that verifier !== implementer.
-const ROUTES = Object.freeze({
-  build:       Object.freeze({ triage: null,       implement: 'generalist' }),
-  web:         Object.freeze({ triage: null,       implement: 'frontend'   }),
-  complex:     Object.freeze({ triage: null,       implement: 'specialist' }),
-  verify:      Object.freeze({ triage: null,       implement: 'specialist' }),
-  environment: Object.freeze({ triage: 'frontend', implement: 'frontend'   }),
-});
+function rosterAgents(roster) {
+  return roster?.agents ?? DEFAULT_ROSTER.agents;
+}
+
+/** An explicitly named owner for a stage, when the roster names a usable one. */
+function namedOwner(role, roster, type) {
+  const routes = roster?.routes ?? {};
+  const named = role === 'implement' ? routes.implement?.[type] : routes[role];
+  if (!named) return null;
+  const agent = rosterAgents(roster)[named];
+  if (!agent || agent.available === false) return null;
+  return named;
+}
+
+/**
+ * Score-ranked candidate for a role. Deterministic and reproducible:
+ *   1. highest `scores[role]`;
+ *   2. then a capability match in `specialties`;
+ *   3. then lower `cost`;
+ *   4. then agent id order (lexicographic, so it is stable across runs).
+ * Returns null when nobody is eligible. Excluded ids never win.
+ */
+export function selectAgent(role, { roster = DEFAULT_ROSTER, exclude = [], capability = null } = {}) {
+  const candidates = Object.entries(rosterAgents(roster))
+    .filter(([id, agent]) => !exclude.includes(id) && agent?.available !== false)
+    .map(([id, agent]) => ({
+      id,
+      score: agent?.scores?.[role] ?? 0,
+      specialty: capability && Array.isArray(agent?.specialties) && agent.specialties.includes(capability) ? 1 : 0,
+      cost: agent?.cost ?? 0,
+    }));
+  if (candidates.length === 0) return null;
+  candidates.sort(
+    (x, y) => y.score - x.score || y.specialty - x.specialty || x.cost - y.cost || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0),
+  );
+  return candidates[0];
+}
+
+/**
+ * Owner of a stage: the explicitly named agent when the roster provides one,
+ * otherwise the highest-scoring eligible agent. Works for any roster size and any
+ * agent names - nothing here hardcodes an identity.
+ */
+export function ownerFor(role, { roster = DEFAULT_ROSTER, type = null, capability = null, exclude = [] } = {}) {
+  const named = namedOwner(role, roster, type);
+  if (named && !exclude.includes(named)) return named;
+  const pick = selectAgent(role, { roster, exclude, capability });
+  return pick ? pick.id : null;
+}
 
 // Dry-run command templates. These are PLACEHOLDERS: swap `agent-run` for your own
 // runner. Each template returns an ARGV ARRAY, never a shell string: task titles and
@@ -61,6 +152,12 @@ export const COMMAND_TEMPLATES = Object.freeze({
   frontend:   (prompt) => ['agent-run', '--profile', 'frontend', prompt],
   specialist: (prompt) => ['agent-run', '--profile', 'specialist', prompt],
 });
+
+/**
+ * Fallback template for any agent id a roster declares. Without it, a team whose
+ * agents are not called generalist/frontend/specialist could not be dispatched at all.
+ */
+export const DEFAULT_COMMAND_TEMPLATE = (prompt, agentId) => ['agent-run', '--profile', agentId, prompt];
 
 /** Characters that need no quoting in a POSIX shell. */
 const SHELL_SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;
@@ -109,24 +206,60 @@ export function capabilityForType(type) {
   }
 }
 
-/** Who implements the current type. */
-export function implementerForType(type) {
-  return (ROUTES[type] ?? ROUTES.build).implement;
+/**
+ * Who implements this task type: the roster's named route when it has one, otherwise
+ * the highest-scoring eligible agent. Never hardcodes an identity, so any roster works.
+ */
+export function implementerForType(type, roster = DEFAULT_ROSTER) {
+  return ownerFor('implement', { roster, type, capability: capabilityForType(type) });
+}
+
+/** Default verification-gate record for a task that has not been verified yet. */
+export function emptyVerification() {
+  return {
+    status: 'pending',
+    attempts: 0,
+    blocked: false,
+    lastResult: null,
+    criteria: null,
+    findings: null,
+    at: null,
+    by: null,
+    override: null,
+  };
 }
 
 /**
- * Independent verifier for an implementer: always a different agent.
- * Mirrors the source invariant: when the coordinator implemented, the specialist
- * verifies; any other implementer is verified by the coordinator.
+ * Pick the agent best suited to verify this task, from the roster's capability scores.
+ *
+ * Selection is the generic `selectAgent('verify', ...)` ranking with the implementer
+ * excluded, so it scales to any roster: it prefers the highest verify score, then a
+ * capability match, then the cheaper agent, then agent id order. Verification is the
+ * gate, so this fails closed:
+ *   * nobody eligible      -> returns null (caller throws);
+ *   * best eligible is 0   -> throws, instead of pretending an unscored agent can verify.
  */
-export function verifierFor(implementer) {
-  return implementer === 'generalist' ? 'specialist' : 'generalist';
+export function selectVerifier(implementer, roster = DEFAULT_ROSTER, options = {}) {
+  const pick = selectAgent('verify', { roster, exclude: [implementer], capability: options.capability ?? null });
+  if (!pick) return null;
+  if (pick.score <= 0) {
+    throw new Error(
+      `No agent in the roster is scored for verification (best eligible: ${pick.id}, score 0). ` +
+        'Give an agent a verify score of 1 or more, or assign the verifier explicitly.',
+    );
+  }
+  return pick.id;
 }
 
-function route(type) {
-  // Every type starts in `specify` with the coordinator.
-  void type;
-  return { phase: 'specify', agent: 'generalist' };
+/** Convenience wrapper over selectVerifier for the default roster. */
+export function verifierFor(implementer) {
+  return selectVerifier(implementer);
+}
+
+function route(type, roster = DEFAULT_ROSTER) {
+  // Every type starts in `specify`, owned by the roster's coordinator (or the
+  // highest-scoring agent when the roster names none).
+  return { phase: 'specify', agent: ownerFor('specify', { roster, capability: capabilityForType(type) }) };
 }
 
 function requireTask(state, id) {
@@ -158,18 +291,36 @@ function agentCommand(task) {
     "Write boundary: modify files only within the task's explicit write scope; do not touch the queue file, handoff notes, shared rules, or any file outside the task's declared workspace unless the task carries an explicit approval.",
     'Verifier independence: the verifier for this task is a different agent from the implementer; never verify your own implementation.',
     'Evidence: record changed files, commands, exit codes, and evidence through the orchestrator, and write a machine-readable JSON result under the task workspace outputs directory.',
+    'Verification gate: the verifier is chosen by capability score and is never the implementer. If verification fails, report the failing criteria and findings - the task returns to implement and cannot reach done until a verification passes or an explicit override (approver, scope, reason) is recorded.',
+    ...(task.phase === 'verify'
+      ? ['This is the verify stage: you are the independent verifier. Do not fix the work yourself. Record a pass only with criterion-linked evidence; otherwise record a failure with the failing criteria.']
+      : []),
     'External actions: never deploy, send external messages, publish, or delete data without an explicit user approval recorded in the orchestrator.',
     'Headless workers: before editing, state the allowed write paths; run the stated verification commands; write the machine-readable JSON result; and report changed files, commands, exit codes, evidence, and unresolved items.',
   ].join(' ');
-  const template = COMMAND_TEMPLATES[task.assignedAgent];
+  const template =
+    COMMAND_TEMPLATES[task.assignedAgent] ?? ((prompt) => DEFAULT_COMMAND_TEMPLATE(prompt, task.assignedAgent));
   if (!template) return null;
   const argv = template(prompt);
   return { argv, command: renderCommand(argv) };
 }
 
 /** A fresh, empty orchestrator state. */
-export function createState() {
-  return { version: STATE_VERSION, migration: null, nextTaskNumber: 1, tasks: {}, events: [] };
+/**
+ * A fresh state. Pass a roster of any size (3 agents, 5, 12 - all fine); the default
+ * roster is used when none is given. The roster is validated before it is stored.
+ */
+export function createState(roster = DEFAULT_ROSTER) {
+  const checked = validateRoster(copy(roster));
+  return {
+    version: STATE_VERSION,
+    migration: null,
+    nextTaskNumber: 1,
+    tasks: {},
+    events: [],
+    // Who can do what. Older state files without a roster fall back to the default.
+    roster: checked,
+  };
 }
 
 /**
@@ -216,7 +367,8 @@ export function createTask(state, input) {
     security: security ?? DEFAULT_START_CHOICES.security,
     independentVerify: independentVerify ?? DEFAULT_START_CHOICES.independentVerify,
   };
-  const initial = route(type);
+  const initial = route(type, next.roster);
+  if (!initial.agent) throw new Error('No agent in the roster can own the specify stage');
   const task = {
     id,
     title: input.title.trim(),
@@ -233,6 +385,7 @@ export function createTask(state, input) {
       ? { kind: input.externalAction, approved: false, approvedBy: null, scope: null }
       : null,
     evidence: [],
+    verification: emptyVerification(),
     createdAt: now(),
     updatedAt: now(),
   };
@@ -268,28 +421,132 @@ export function completeStage(state, id, agent, result = {}) {
   const task = requireTask(next, id);
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot complete a stage`);
   requireOwner(task, agent);
+  task.verification ??= emptyVerification();
   if (result.evidence) task.evidence.push({ at: now(), agent, text: result.evidence });
-  const implementAgent = implementerForType(task.type);
-  const verifier = verifierFor(agent);
-  if (!verifier) throw new Error(`No independent verifier available for implementer ${agent}`);
+  const roster = next.roster ?? DEFAULT_ROSTER;
+  const implementAgent = implementerForType(task.type, roster);
+  // The verifier is chosen by capability score, never the implementer (see selectVerifier).
+  const needsVerifier = task.phase === 'implement';
+  const verifier = needsVerifier ? selectVerifier(agent, roster, { capability: task.capability }) : null;
+  if (needsVerifier && !verifier) {
+    throw new Error(`No independent verifier available for implementer ${agent}`);
+  }
+  // The gate. A task may reach `done` only after a verification PASS, or after an
+  // explicit override that carries an approver, a scope and a reason.
+  if (task.phase === 'evidence' && task.verification.status !== 'passed' && !task.verification.override) {
+    throw new Error(
+      `Task ${id} cannot reach done: verification has not passed (status: ${task.verification.status}). ` +
+        'Re-run the verify stage, or record an explicit override with approvedBy, scope and reason.',
+    );
+  }
+  const stageOwner = (role) => ownerFor(role, { roster, type: task.type, capability: task.capability });
   const transitions = {
     specify: task.type === 'environment'
-      ? { phase: 'triage', agent: ROUTES.environment.triage }
+      ? { phase: 'triage', agent: stageOwner('triage') }
       : { phase: 'implement', agent: implementAgent },
-    triage: { phase: 'implement', agent: ROUTES.environment.implement },
+    triage: { phase: 'implement', agent: implementAgent },
     implement: { phase: 'verify', agent: verifier },
-    verify: { phase: 'evidence', agent: 'generalist' },
+    verify: { phase: 'evidence', agent: stageOwner('evidence') },
     evidence: { phase: 'done', agent: null },
   };
   const nextStep = transitions[task.phase];
   if (!nextStep) throw new Error(`Task ${id} cannot complete unknown phase ${task.phase}`);
+  if (nextStep.phase !== 'done' && !nextStep.agent) {
+    throw new Error(`No agent in the roster can own the ${nextStep.phase} stage`);
+  }
   const previousPhase = task.phase;
+  // Completing the verify stage IS the pass. Record who passed it, and when.
+  if (task.phase === 'verify') {
+    task.verification = {
+      ...task.verification,
+      status: 'passed',
+      blocked: false,
+      lastResult: 'pass',
+      attempts: task.verification.attempts + 1,
+      findings: null,
+      at: now(),
+      by: agent,
+    };
+  }
   task.phase = nextStep.phase;
   task.assignedAgent = nextStep.agent;
   task.lock = null;
   task.status = nextStep.phase === 'done' ? 'done' : 'queued';
   task.updatedAt = now();
   event(next, id, 'stage_completed', { agent, previousPhase, nextPhase: task.phase, nextAgent: task.assignedAgent });
+  return { state: next, task: copy(task) };
+}
+
+/**
+ * Record a failed verification and send the task back to implement.
+ *
+ * Only the verifier holding the lock may fail the stage, and it must say WHAT failed
+ * (criteria or findings). The verifier never fixes the work itself. The gate stays
+ * blocked until a later verify stage passes or an explicit override is recorded.
+ */
+export function failVerification(state, id, agent, failure = {}) {
+  const next = copy(state);
+  const task = requireTask(next, id);
+  if (task.phase !== 'verify') {
+    throw new Error(`Task ${id} is not in the verify stage (current: ${task.phase})`);
+  }
+  if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot fail a stage`);
+  requireOwner(task, agent);
+  const criteria = failure.criteria ?? null;
+  const findings = failure.findings ?? null;
+  if (!criteria && !findings) {
+    throw new Error('A verification failure must state the failing criteria or the findings');
+  }
+  const previous = task.verification ?? emptyVerification();
+  task.verification = {
+    ...previous,
+    status: 'failed',
+    blocked: true,
+    attempts: previous.attempts + 1,
+    lastResult: 'fail',
+    criteria,
+    findings,
+    at: now(),
+    by: agent,
+  };
+  task.phase = 'implement';
+  task.assignedAgent = implementerForType(task.type, next.roster ?? DEFAULT_ROSTER);
+  task.lock = null;
+  task.status = 'queued';
+  task.updatedAt = now();
+  event(next, id, 'verification_failed', { agent, criteria, findings });
+  return { state: next, task: copy(task) };
+}
+
+/**
+ * Soft gate: let a human/coordinator pass a failed verification deliberately.
+ *
+ * All three fields are required - approver, scope and reason - so an override is
+ * always attributable and never silent. The failed result is kept in the record;
+ * the override is added next to it rather than replacing it.
+ */
+export function overrideVerificationGate(state, id, override = {}) {
+  const next = copy(state);
+  const task = requireTask(next, id);
+  if (!override?.approvedBy || !override?.scope || !override?.reason) {
+    throw new Error('Overriding the verification gate requires approvedBy, scope and reason');
+  }
+  if (!task.verification?.blocked) {
+    throw new Error(`Task ${id} has no blocked verification gate to override`);
+  }
+  task.verification.override = {
+    approvedBy: override.approvedBy,
+    scope: override.scope,
+    reason: override.reason,
+    at: now(),
+  };
+  task.verification.blocked = false;
+  task.updatedAt = now();
+  event(next, id, 'verification_gate_overridden', {
+    approvedBy: override.approvedBy,
+    scope: override.scope,
+    reason: override.reason,
+  });
   return { state: next, task: copy(task) };
 }
 
@@ -344,6 +601,11 @@ export function nextDispatch(state, id) {
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot be dispatched`);
   if (task.lock) throw new Error(`Task ${id} is already held by ${task.lock.owner}`);
   if (!task.assignedAgent) throw new Error(`Task ${id} has no assigned agent; cannot dispatch`);
+  if (task.phase === 'evidence' && task.verification?.blocked && !task.verification?.override) {
+    throw new Error(
+      `Task ${id} is gated: verification failed and no override is recorded, so it cannot be dispatched to evidence`,
+    );
+  }
   const rendered = agentCommand(task);
   if (!rendered) throw new Error(`Task ${id} has no dispatch command for agent ${task.assignedAgent}`);
   return {
@@ -357,7 +619,13 @@ export function nextDispatch(state, id) {
     command: rendered.command,
     argv: rendered.argv,
     requiresHumanCoordination: false,
-    requiresCoordinatorCoordination: task.assignedAgent === 'generalist',
+    requiresCoordinatorCoordination:
+      task.assignedAgent === ownerFor('specify', { roster: state.roster ?? DEFAULT_ROSTER, capability: task.capability }),
     externalActionApproved: canRunExternalAction(state, id),
+    // Gate visibility: the dispatch record shows whether verification passed and
+    // whether an override is in force.
+    verificationStatus: task.verification?.status ?? 'pending',
+    verificationBlocked: task.verification?.blocked === true,
+    verificationOverride: task.verification?.override ?? null,
   };
 }

@@ -26,9 +26,16 @@ import {
   completeStage,
   createState,
   createTask,
+  failVerification,
+  implementerForType,
   nextDispatch,
+  ownerFor,
+  overrideVerificationGate,
   recoverTask,
+  selectAgent,
+  selectVerifier,
   shellQuote,
+  validateRoster,
   verifierFor,
 } from './lib.mjs';
 
@@ -43,13 +50,15 @@ function step(state, id, agent, evidence = '') {
 
 // ── state shape ──────────────────────────────────────────────────────────────
 
-test('createState returns an empty schema-v3 queue', () => {
+test('createState returns an empty queue carrying a validated roster', () => {
   const state = createState();
   assert.equal(state.version, STATE_VERSION);
-  assert.equal(state.version, 3);
+  assert.equal(state.version, 4);
   assert.equal(state.nextTaskNumber, 1);
   assert.deepEqual(state.tasks, {});
   assert.deepEqual(state.events, []);
+  // The roster is data, so the same mechanism serves 3 agents or 12.
+  assert.deepEqual(Object.keys(state.roster.agents).sort(), AGENTS.slice().sort());
 });
 
 test('createTask is pure: the input state is not mutated', () => {
@@ -93,10 +102,10 @@ test('a new task is queued in specify and owned by the coordinator', () => {
 
 const FLOWS = {
   build:       { phases: ['specify', 'implement', 'verify', 'evidence', 'done'], actors: ['generalist', 'generalist', 'specialist', 'generalist'] },
-  web:         { phases: ['specify', 'implement', 'verify', 'evidence', 'done'], actors: ['generalist', 'frontend', 'generalist', 'generalist'] },
+  web:         { phases: ['specify', 'implement', 'verify', 'evidence', 'done'], actors: ['generalist', 'frontend', 'specialist', 'generalist'] },
   complex:     { phases: ['specify', 'implement', 'verify', 'evidence', 'done'], actors: ['generalist', 'specialist', 'generalist', 'generalist'] },
   verify:      { phases: ['specify', 'implement', 'verify', 'evidence', 'done'], actors: ['generalist', 'specialist', 'generalist', 'generalist'] },
-  environment: { phases: ['specify', 'triage', 'implement', 'verify', 'evidence', 'done'], actors: ['generalist', 'frontend', 'frontend', 'generalist', 'generalist'] },
+  environment: { phases: ['specify', 'triage', 'implement', 'verify', 'evidence', 'done'], actors: ['generalist', 'frontend', 'frontend', 'specialist', 'generalist'] },
 };
 
 test('STAGES lists the pipeline in order', () => {
@@ -134,7 +143,8 @@ test('the verifier is never the implementer (every type)', () => {
     assert.equal(verifierFor(flow.actors[implIdx]), flow.actors[verIdx], type + ' verifier mismatch');
   }
   assert.equal(verifierFor('generalist'), 'specialist');
-  assert.equal(verifierFor('frontend'), 'generalist');
+  // frontend scores 1 for verify, specialist scores 3: the scored ranking wins.
+  assert.equal(verifierFor('frontend'), 'specialist');
   assert.equal(verifierFor('specialist'), 'generalist');
 });
 
@@ -380,9 +390,12 @@ test('dispatch throws for non-dispatchable tasks', () => {
   orphan.state.tasks[orphan.task.id].assignedAgent = null;
   assert.throws(() => nextDispatch(orphan.state, orphan.task.id), /no assigned agent/);
 
-  const unknown = createOne({ title: 'no-command' });
-  unknown.state.tasks[unknown.task.id].assignedAgent = 'ghost';
-  assert.throws(() => nextDispatch(unknown.state, unknown.task.id), /no dispatch command for agent ghost/);
+  // Any agent id a roster declares is dispatchable: the generic fallback template
+  // covers teams whose agents are not called generalist/frontend/specialist.
+  const custom = createOne({ title: 'custom-agent' });
+  custom.state.tasks[custom.task.id].assignedAgent = 'ghost';
+  const dispatched = nextDispatch(custom.state, custom.task.id);
+  assert.deepEqual(dispatched.argv.slice(0, 3), ['agent-run', '--profile', 'ghost']);
 });
 
 // ── external-action approve gate ─────────────────────────────────────────────
@@ -498,3 +511,185 @@ test('the CLI resolves the queue file relative to the module', () => {
 test('the default agent roster is available to callers', () => {
   assert.deepEqual(AGENTS, ['generalist', 'frontend', 'specialist']);
 });
+
+// ── roster genericity: any size, any agent names ─────────────────────────────
+
+const SIX_AGENT_ROSTER = {
+  agents: {
+    planner: { cost: 2, scores: { specify: 3, implement: 1, verify: 1, evidence: 3 } },
+    builder1: { cost: 4, specialties: ['full'], scores: { specify: 1, implement: 3, verify: 1, evidence: 1 } },
+    builder2: { cost: 5, specialties: ['web'], scores: { specify: 1, implement: 2, verify: 1, evidence: 1 } },
+    auditorA: { cost: 6, specialties: ['verify'], scores: { specify: 1, implement: 1, verify: 3, evidence: 2 } },
+    auditorB: { cost: 7, specialties: ['verify'], scores: { specify: 1, implement: 1, verify: 3, evidence: 2 } },
+    scribe: { cost: 1, scores: { specify: 1, implement: 1, verify: 0, evidence: 3 } },
+  },
+  routes: { specify: 'planner', evidence: 'scribe', implement: { build: 'builder1', web: 'builder2' } },
+};
+
+test('a six-agent roster with custom names routes without any code change', () => {
+  const created = createTask(createState(SIX_AGENT_ROSTER), { title: 'six-agents', type: 'build' });
+  const state = created.state;
+  const id = created.task.id;
+  assert.equal(Object.keys(state.roster.agents).length, 6);
+  assert.equal(implementerForType('build', state.roster), 'builder1');
+  assert.equal(implementerForType('web', state.roster), 'builder2');
+  assert.equal(ownerFor('specify', { roster: state.roster }), 'planner');
+  assert.equal(ownerFor('evidence', { roster: state.roster }), 'scribe');
+  // The verifier is scored, never the implementer: auditorA outranks auditorB on cost.
+  assert.equal(selectVerifier('builder1', state.roster), 'auditorA');
+  assert.equal(selectVerifier('auditorA', state.roster), 'auditorB');
+
+  // And the whole pipeline runs end to end for a custom roster.
+  let s = step(state, id, 'planner');
+  s = step(s, id, 'builder1');
+  assert.equal(s.tasks[id].assignedAgent, 'auditorA');
+  s = step(s, id, 'auditorA');
+  s = step(s, id, 'scribe');
+  assert.equal(s.tasks[id].phase, 'done');
+});
+
+test('the verifier ranking scales and stays deterministic', () => {
+  const roster = {
+    agents: {
+      a: { cost: 9, scores: { verify: 2 } },
+      b: { cost: 1, scores: { verify: 2 } },
+      c: { cost: 5, scores: { verify: 1 } },
+      impl: { cost: 1, scores: { verify: 3, implement: 3 } },
+    },
+  };
+  // impl has the highest score but is excluded; b beats a on cost at equal score.
+  assert.equal(selectVerifier('impl', roster), 'b');
+  assert.equal(selectAgent('verify', { roster }).id, 'impl');
+  assert.equal(selectAgent('verify', { roster, exclude: ['impl'] }).id, 'b');
+  // Capability match outranks cost at equal score.
+  const specialised = {
+    agents: {
+      cheap: { cost: 1, scores: { verify: 2 } },
+      webby: { cost: 9, specialties: ['web'], scores: { verify: 2 } },
+    },
+  };
+  assert.equal(selectAgent('verify', { roster: specialised, capability: 'web' }).id, 'webby');
+});
+
+test('a roster with nobody scored for verification fails closed', () => {
+  const roster = { agents: { solo: { cost: 1, scores: { implement: 3 } } } };
+  assert.throws(() => selectVerifier('other', roster), /No agent in the roster is scored for verification/);
+});
+
+test('validateRoster rejects malformed rosters loudly', () => {
+  assert.throws(() => validateRoster({}), /must look like/);
+  assert.throws(() => validateRoster({ agents: {} }), /at least one agent/);
+  assert.throws(() => validateRoster({ agents: { a: { scores: { verify: 4 } } } }), /score for verify must be a number 0-3/);
+  assert.throws(() => validateRoster({ agents: { a: { scores: { auditing: 1 } } } }), /unknown role "auditing"/);
+  assert.throws(() => validateRoster({ agents: { a: { cost: 'cheap' } } }), /cost must be a number/);
+  assert.throws(() => validateRoster({ agents: { a: { specialties: 'web' } } }), /specialties must be an array/);
+  assert.doesNotThrow(() => validateRoster(SIX_AGENT_ROSTER));
+});
+
+// ── the verification gate ────────────────────────────────────────────────────
+
+function atVerify(title = 'gate-task', type = 'build') {
+  const created = createOne({ title, type });
+  const id = created.task.id;
+  let s = step(created.state, id, 'generalist'); // specify -> implement
+  s = step(s, id, implementerForType(type)); // implement -> verify
+  const verifier = s.tasks[id].assignedAgent;
+  s = claimTask(s, id, verifier).state;
+  return { state: s, id, verifier, implementer: implementerForType(type) };
+}
+
+test('a failed verification blocks the gate and returns the task to implement', () => {
+  const g = atVerify();
+  const out = failVerification(g.state, g.id, g.verifier, { criteria: 'acceptance test X fails' });
+  const task = out.task;
+  assert.equal(task.phase, 'implement');
+  assert.equal(task.assignedAgent, g.implementer);
+  assert.equal(task.verification.status, 'failed');
+  assert.equal(task.verification.blocked, true);
+  assert.equal(task.verification.lastResult, 'fail');
+  assert.equal(task.verification.criteria, 'acceptance test X fails');
+  assert.equal(task.verification.by, g.verifier);
+  assert.equal(task.lock, null);
+  assert.equal(out.state.events.at(-1).type, 'verification_failed');
+});
+
+test('failVerification demands the verify stage and a stated failure', () => {
+  const r = createOne({ title: 'not-verifying' });
+  // Task is in specify: not a verify stage.
+  assert.throws(() => failVerification(r.state, r.task.id, 'generalist', { findings: 'x' }), /not in the verify stage/);
+  const g = atVerify();
+  assert.throws(() => failVerification(g.state, g.id, g.verifier, {}), /must state the failing criteria or the findings/);
+  // Only the lock holder may fail the stage.
+  assert.throws(() => failVerification(g.state, g.id, 'someone-else', { findings: 'x' }), /must be claimed by/);
+});
+
+test('the gate cannot be walked past: no done without a pass or an override', () => {
+  const g = atVerify();
+  const failed = failVerification(g.state, g.id, g.verifier, { findings: 'flaky' }).state;
+  // Simulate a queue edited by hand into the final stage: the gate still refuses.
+  const doctored = structuredClone(failed);
+  const task = doctored.tasks[g.id];
+  task.phase = 'evidence';
+  task.assignedAgent = ownerFor('evidence', { roster: doctored.roster });
+  task.lock = { owner: task.assignedAgent, claimedAt: new Date().toISOString() };
+  task.status = 'in_progress';
+  assert.throws(() => completeStage(doctored, g.id, task.assignedAgent), /verification has not passed/);
+  // And it is not dispatchable either.
+  const unclaimed = structuredClone(doctored);
+  unclaimed.tasks[g.id].lock = null;
+  unclaimed.tasks[g.id].status = 'queued';
+  assert.throws(() => nextDispatch(unclaimed, g.id), /is gated/);
+});
+
+test('reworking and passing the verify stage opens the gate', () => {
+  const g = atVerify();
+  let s = failVerification(g.state, g.id, g.verifier, { findings: 'flaky' }).state;
+  const blocked = s.tasks[g.id];
+  s = claimTask(s, g.id, blocked.assignedAgent).state;
+  s = completeStage(s, g.id, blocked.assignedAgent, { evidence: 'fixed the flake' }).state;
+  const verifier = s.tasks[g.id].assignedAgent;
+  s = claimTask(s, g.id, verifier).state;
+  s = completeStage(s, g.id, verifier, { evidence: 'reproduced, exit 0' }).state;
+  assert.equal(s.tasks[g.id].verification.status, 'passed');
+  assert.equal(s.tasks[g.id].verification.blocked, false);
+  assert.equal(s.tasks[g.id].verification.attempts, 2);
+  s = claimTask(s, g.id, s.tasks[g.id].assignedAgent).state;
+  s = completeStage(s, g.id, s.tasks[g.id].lock.owner).state;
+  assert.equal(s.tasks[g.id].phase, 'done');
+});
+
+test('an override needs an approver, a scope and a reason, and is recorded', () => {
+  const g = atVerify();
+  const failed = failVerification(g.state, g.id, g.verifier, { findings: 'known flake' }).state;
+  assert.throws(() => overrideVerificationGate(failed, g.id, { approvedBy: 'user' }), /requires approvedBy, scope and reason/);
+  assert.throws(() => overrideVerificationGate(failed, g.id, { approvedBy: 'user', scope: 'ship it' }), /requires approvedBy, scope and reason/);
+  const out = overrideVerificationGate(failed, g.id, { approvedBy: 'user', scope: 'release 2.1', reason: 'flake is pre-existing' });
+  assert.equal(out.task.verification.blocked, false);
+  // The failure is kept next to the override - an override never erases the record.
+  assert.equal(out.task.verification.status, 'failed');
+  assert.equal(out.task.verification.override.approvedBy, 'user');
+  assert.equal(out.task.verification.override.scope, 'release 2.1');
+  assert.equal(out.task.verification.override.reason, 'flake is pre-existing');
+  assert.equal(out.state.events.at(-1).type, 'verification_gate_overridden');
+  // With the override recorded, the final stage is allowed.
+  const doctorable = structuredClone(out.state);
+  const task = doctorable.tasks[g.id];
+  task.phase = 'evidence';
+  task.lock = { owner: task.assignedAgent, claimedAt: new Date().toISOString() };
+  task.status = 'in_progress';
+  const done = completeStage(doctorable, g.id, task.assignedAgent);
+  assert.equal(done.task.phase, 'done');
+});
+
+test('a clean run passes the gate with no override', () => {
+  const created = createOne({ title: 'clean' });
+  const id = created.task.id;
+  let s = FLOWS.build.actors.reduce((state, actor) => step(state, id, actor), created.state);
+  const task = s.tasks[id];
+  assert.equal(task.phase, 'done');
+  assert.equal(task.verification.status, 'passed');
+  assert.equal(task.verification.blocked, false);
+  assert.equal(task.verification.override, null);
+  assert.equal(task.verification.attempts, 1);
+});
+
