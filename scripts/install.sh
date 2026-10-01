@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# One-click installer for the multi-agent-orchestration skill.
+# One-click installer for the agent-orchestra skill.
 # Usage: ./scripts/install.sh [-t <skill-dir>] [-f]
 set -e
 TARGET=""
@@ -14,7 +14,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -z "$TARGET" ]; then
   # Set AGENT_SKILLS_DIR for your host, or pass -t explicitly.
   for c in "$AGENT_SKILLS_DIR" "$HOME/.claude/skills" "$HOME/.agents/skills"; do
-    if [ -d "$c" ]; then TARGET="$c/multi-agent-orchestration"; break; fi
+    if [ -d "$c" ]; then TARGET="$c/agent-orchestra"; break; fi
   done
 fi
 if [ -z "$TARGET" ]; then

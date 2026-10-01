@@ -41,6 +41,9 @@ activation:
     - 独立复核
     - 独立核验
     - 交接
+    - 接力
+    - 换助手
+    - 交接班
     - 验收
     - 节省token
     - 省token
@@ -113,6 +116,23 @@ roster:
     specify: planner
     evidence: scribe
     implement: { build: builder, web: webhand }
+
+
+# ---- Handoff: how state survives a change of agent, session or tool ----
+# These four files live in one directory every agent can read and write. The record is
+# the authority on intent; the queue below is only the scheduler.
+handoff:
+  record_dir: <shared-dir>            # e.g. a directory outside the repo, shared by all agents
+  files: [CURRENT-TASK.md, HANDOFF-RULES.md, MEMORY-SNAPSHOT.md, AGENT-ROLES.md]
+  iron_rules:
+    - read_before_acting
+    - resume_not_redo
+    - write_progress_down
+    - handoff_before_switching
+    - completion_carries_graded_evidence
+  record_outranks_queue: true
+  blocked_after_rounds: 3             # a stuck task names its condition; only then may it be blocked
+  memory_sync: periodic               # refresh the shared snapshot on a schedule or on big decisions
 
 
 # ---- Machine-readable queue (optional companion script) ----

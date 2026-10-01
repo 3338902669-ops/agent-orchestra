@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// detect-trigger.mjs - decide whether the multi-agent-orchestration skill should engage
+// detect-trigger.mjs - decide whether the agent-orchestra skill should engage
 // Usage:
 //   node scripts/detect-trigger.mjs --text "...task text..." [--config config/agents.example.yaml]
 //   echo "text" | node scripts/detect-trigger.mjs [--config ...]

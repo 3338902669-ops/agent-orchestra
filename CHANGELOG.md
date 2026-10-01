@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.2.0] - 2026-10-01
+
+Merged into a single skill. The cross-session handoff discipline that shipped as the
+companion skill `agent-team-handoff/` is folded into the root skill, which is renamed
+`agent-orchestra`; the repository no longer publishes two skills.
+
+### Added
+- `references/handoff.md`: the authoritative handoff detail - the four shared records and when each is updated, the five iron rules with executable checks, the task state machine (queued / in-progress / handoff-wait / done, plus blocked only after three unresolved rounds) and its mapping to the queue stage machine, single-writer ownership and conflict resolution, memory-sync rules, a minimal closed loop, and the cross-session/cross-tool checklist with a handoff entry template.
+- The shared record and the five iron rules are now first-class clauses in `SKILL.md`, not a companion document: a "Handoff: the shared record" section states the four files, the iron rules, and the rule that the record outranks the queue.
+
+### Changed
+- Skill renamed `multi-agent-orchestration` -> `agent-orchestra`: one skill now covers both in-task coordination and cross-session/cross-tool handoff.
+- The non-negotiables grew from six to seven: "read before acting, resume instead of redoing, and write progress down before switching" is now its own clause, and "the human-readable shared record outranks the queue" is stated as a numbered rule rather than a footnote.
+- `agent-team-handoff/` is removed as a separate subdirectory; its content lives in `references/handoff.md` and the root `SKILL.md`.
+
 ## [2.1.0] - 2026-10-01
 
 The verifier is now chosen by capability score, verification is a real gate, and the

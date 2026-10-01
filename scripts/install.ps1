@@ -1,4 +1,4 @@
-# One-click installer for the multi-agent-orchestration skill.
+# One-click installer for the agent-orchestra skill.
 # Usage:  .\scripts\install.ps1 [-Target <skill-dir>] [-Force]
 param(
   [string]$Target = "",
@@ -15,7 +15,7 @@ if (-not $Target) {
     (Join-Path $env:USERPROFILE ".agents\skills")
   ) | Where-Object { $_ }
   foreach ($c in $candidates) {
-    if (Test-Path $c) { $Target = Join-Path $c "multi-agent-orchestration"; break }
+    if (Test-Path $c) { $Target = Join-Path $c "agent-orchestra"; break }
   }
 }
 if (-not $Target) {

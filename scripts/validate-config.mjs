@@ -30,7 +30,7 @@ text.split(/\r?\n/).forEach((raw, index) => {
 const yaml = body.join('\n');
 
 const section = (name) => new RegExp('^' + name + ':', 'm').test(yaml);
-for (const name of ['activation', 'intake_gate', 'risk', 'roles', 'ownership', 'roster', 'queue', 'approval', 'verification_gate', 'evidence', 'cost']) {
+for (const name of ['activation', 'intake_gate', 'risk', 'roles', 'ownership', 'roster', 'handoff', 'queue', 'approval', 'verification_gate', 'evidence', 'cost']) {
   if (!section(name)) errors.push('missing section: ' + name);
 }
 const require = (pattern, message) => { if (!pattern.test(yaml)) errors.push(message); };
@@ -61,6 +61,11 @@ require(/^\s+blocked_effects:\s*\[[^\]]*dispatch_to_evidence[^\]]*\]\s*$/m, 'ver
 require(/^\s+override_requires:\s*\[[^\]]*approvedBy[^\]]*scope[^\]]*reason[^\]]*\]\s*$/m, 'verification_gate.override_requires must list approvedBy, scope and reason');
 require(/^\s+override_keeps_failure_record:\s*true\s*$/m, 'verification_gate.override_keeps_failure_record must be true');
 require(/^\s+override_is_not_evidence:\s*true\s*$/m, 'verification_gate.override_is_not_evidence must be true');
+// The handoff record is what survives a change of agent, session or tool.
+require(/^\s+record_outranks_queue:\s*true\s*$/m, 'handoff.record_outranks_queue must be true');
+require(/^\s+blocked_after_rounds:\s*3\s*$/m, 'handoff.blocked_after_rounds must be 3');
+require(/^\s+files:\s*\[[^\]]*CURRENT-TASK\.md[^\]]*\]\s*$/m, 'handoff.files must include CURRENT-TASK.md');
+require(/^\s+iron_rules:\s*$/m, 'handoff.iron_rules is required');
 
 if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
 console.log('valid orchestration config: ' + file);

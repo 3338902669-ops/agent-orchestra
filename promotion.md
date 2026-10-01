@@ -160,7 +160,7 @@ Running three or more AI agents on the same project is a recipe for three classi
 2. **Files get overwritten.** Two agents edit the same file at the same time; the last writer wins silently; the diff makes no sense.
 3. **"Done" is self-declared.** The implementing agent says it finished and verified its own work. Nobody independently checks the acceptance criteria.
 
-I open-sourced the protocol I run locally every day: **multi-agent-orchestration** — a capability-first skill for coordinating 3+ agents.
+I open-sourced the protocol I run locally every day: **agent-orchestra** — a capability-first skill for coordinating 3+ agents.
 
 ### The core ideas
 
