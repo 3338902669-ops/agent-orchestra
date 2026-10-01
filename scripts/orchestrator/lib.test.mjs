@@ -56,9 +56,13 @@ function createOne(input) {
 
 function step(state, id, agent, evidence = 'ran the stage: exit 0') {
   // The default carries a graded record because rigor L2 (the default) now requires one to reach
-  // done - the rigor ladder is enforced, not documented.
+  // done, and the packet because the specify stage cannot end without its work products.
   const claimed = claimTask(state, id, agent).state;
-  return completeStage(claimed, id, agent, { evidence }).state;
+  const task = claimed.tasks[id];
+  const packet = task.phase === 'specify'
+    ? { spec: 'the change under test', acceptance: 'the suite exits 0' }
+    : {};
+  return completeStage(claimed, id, agent, { evidence, ...packet }).state;
 }
 
 // ── state shape ──────────────────────────────────────────────────────────────
@@ -169,7 +173,7 @@ test('completeStage without the claim is rejected', () => {
 test('completeStage records evidence supplied by the owner', () => {
   const r = createOne({ title: 'evidence' });
   const claimed = claimTask(r.state, r.task.id, 'generalist').state;
-  const out = completeStage(claimed, r.task.id, 'generalist', { evidence: 'exit code 0' });
+  const out = completeStage(claimed, r.task.id, 'generalist', { evidence: 'exit code 0', spec: 's', acceptance: 'a' });
   assert.equal(out.task.evidence.length, 1);
   assert.equal(out.task.evidence[0].text, 'exit code 0');
   assert.equal(out.task.evidence[0].agent, 'generalist');
@@ -517,6 +521,33 @@ for (const file of RUNTIME_SOURCES) {
 }
 
 
+
+// ── the task packet is an artifact, not prose (R3) ───────────────────────────────────
+test('the specify stage cannot end without a spec and an acceptance criterion', () => {
+  const state = createState();
+  const created = createTask(state, { title: 'no-packet' });
+  const claimed = claimTask(created.state, created.task.id, created.task.assignedAgent).state;
+  assert.throws(
+    () => completeStage(claimed, created.task.id, created.task.assignedAgent, {}),
+    /without its work products: --spec, --acceptance/,
+  );
+  const done = completeStage(claimed, created.task.id, created.task.assignedAgent, {
+    spec: 'add a settings page', acceptance: 'npm test exits 0', nonGoals: 'no deploy',
+  }).state;
+  const task = done.tasks[created.task.id];
+  assert.equal(task.spec, 'add a settings page');
+  assert.equal(task.acceptance, 'npm test exits 0');
+  assert.equal(task.nonGoals, 'no deploy');
+  assert.equal(task.phase, 'implement');
+});
+
+test('the packet may be supplied at create time instead', () => {
+  const state = createState();
+  const created = createTask(state, { title: 'packet-upfront', spec: 's', acceptance: 'a' });
+  const claimed = claimTask(created.state, created.task.id, created.task.assignedAgent).state;
+  const done = completeStage(claimed, created.task.id, created.task.assignedAgent, {}).state;
+  assert.equal(done.tasks[created.task.id].phase, 'implement');
+});
 // ── the intake gate must not answer for the user ─────────────────────────────────────
 test('a task with an external action must state all three start choices', () => {
   const state = createState();
@@ -576,9 +607,12 @@ function driveToDone(state, id, evidence) {
     const task = current.tasks[id];
     if (task.phase === 'done') return current;
     const agent = task.assignedAgent;
+    const at = current.tasks[id].phase;
     current = claimTask(current, id, agent).state;
-    const atEvidence = current.tasks[id].phase === 'evidence';
-    current = completeStage(current, id, agent, atEvidence && evidence ? { evidence } : {}).state;
+    const payload = at === 'specify'
+      ? { spec: 'the change under test', acceptance: 'the suite exits 0' }
+      : (at === 'evidence' && evidence ? { evidence } : {});
+    current = completeStage(current, id, agent, payload).state;
   }
   throw new Error('task did not reach done: ' + current.tasks[id].phase);
 }
@@ -607,7 +641,7 @@ test('a bare evidence string is stored as E3 and labelled, never as E1', () => {
   const state = createState();
   const { state: created, task } = createTask(state, { title: 'e3', rigor: 'L1' });
   const claimed = claimTask(created, task.id, task.assignedAgent).state;
-  const done = completeStage(claimed, task.id, task.assignedAgent, { evidence: 'looks fine to me' }).state;
+  const done = completeStage(claimed, task.id, task.assignedAgent, { evidence: 'looks fine to me', spec: 's', acceptance: 'a' }).state;
   const record = done.tasks[task.id].evidence.at(-1);
   assert.equal(record.grade, 'E3');
   assert.match(record.note, /downgraded to E3/);
@@ -620,11 +654,11 @@ test('E1 evidence must carry the command, the exit code and the revision', () =>
   const claimed = claimTask(created, task.id, task.assignedAgent).state;
   const partial = { grade: 'E1', text: 'tests pass', command: 'npm test' }; // no exitCode, no revision
   assert.throws(
-    () => completeStage(claimed, task.id, task.assignedAgent, { evidence: partial }),
+    () => completeStage(claimed, task.id, task.assignedAgent, { evidence: partial, spec: 's', acceptance: 'a' }),
     /E1 evidence must carry exitCode, revision/,
   );
   const full = { grade: 'E1', text: 'tests pass', command: 'npm test', exitCode: 0, revision: 'abc123' };
-  const done = completeStage(claimed, task.id, task.assignedAgent, { evidence: full }).state;
+  const done = completeStage(claimed, task.id, task.assignedAgent, { evidence: full, spec: 's', acceptance: 'a' }).state;
   assert.equal(done.tasks[task.id].evidence.at(-1).grade, 'E1');
   assert.equal(done.tasks[task.id].evidence.at(-1).exitCode, 0);
 });

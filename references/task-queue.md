@@ -206,6 +206,15 @@ The record outranks the queue. On disagreement:
 
 ## 11. Commands
 
+The packet may be supplied up front or while closing the specify stage; either way it must exist
+before the stage ends, because leaving specify without it is refused:
+
+```bash
+orchestrator create --title "Ship the settings page" --type web --rigor L2 \
+  --spec "what is being built" --acceptance "npm test exits 0" --non-goals "no deploy"
+orchestrator complete --task task-0001 --agent planner --spec "..." --acceptance "..."
+```
+
 | Command | Flags | Effect |
 |---|---|---|
 | `init` | `[--roster <file.json>] [--force]` | install a roster of any size and a fresh queue; prints the accepted agent ids. A non-empty queue requires `--force`, which writes a timestamped backup first |

@@ -209,6 +209,9 @@ function runCommand(args) {
       externalAction: value(args, '--external-action', false),
       important: args.includes('--important'),
       rigor: value(args, '--rigor', false),
+      spec: value(args, '--spec', false),
+      acceptance: value(args, '--acceptance', false),
+      nonGoals: value(args, '--non-goals', false),
       executionMode: value(args, '--execution-mode', false),
       security: value(args, '--security', false),
       independentVerify: value(args, '--independent-verify', false),
@@ -243,7 +246,12 @@ function runCommand(args) {
           exitCode: exitCodeRaw === undefined || exitCodeRaw === null ? null : Number(exitCodeRaw),
         }
       : text;
-    const result = completeStage(state, id, value(args, '--agent'), { evidence });
+    const result = completeStage(state, id, value(args, '--agent'), {
+      evidence,
+      spec: value(args, '--spec', false),
+      acceptance: value(args, '--acceptance', false),
+      nonGoals: value(args, '--non-goals', false),
+    });
     commit(result.state, rev);
     return print(result.task);
   }

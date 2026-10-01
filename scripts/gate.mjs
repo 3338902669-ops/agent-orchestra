@@ -93,7 +93,10 @@ step('cli-io', 'verification gate holds under real CLI use', () => {
   if (o('init').status !== 0) return fail('init failed');
   if (o('create', '--title', 'gate', '--type', 'build').status !== 0) return fail('create failed');
   if (o('claim', '--task', 'task-0001', '--agent', 'generalist').status !== 0) return fail('claim failed');
-  if (o('complete', '--task', 'task-0001', '--agent', 'generalist').status !== 0) return fail('complete failed');
+  // The specify stage cannot end without its work products (R3), so the smoke test supplies them.
+  if (o('complete', '--task', 'task-0001', '--agent', 'generalist', '--spec', 'gate smoke', '--acceptance', 'the gate exits 0').status !== 0) {
+    return fail('complete failed');
+  }
   if (o('claim', '--task', 'task-0001', '--agent', 'generalist').status !== 0) return fail('second claim failed');
   if (o('complete', '--task', 'task-0001', '--agent', 'generalist').status !== 0) return fail('verify failed');
   if (o('claim', '--task', 'task-0001', '--agent', 'specialist').status !== 0) return fail('verify claim failed');
@@ -112,6 +115,14 @@ step('cli-io', 'verification gate holds under real CLI use', () => {
   rmSync(dir, { recursive: true, force: true });
   return { status: 0, durationMs: 0, out: 'gate closed, override recorded, failure kept', err: '' };
 }, 'exit 0: a failed verification blocks done/evidence, needs approver+scope+reason, and keeps the failure');
+
+step('handoff', 'the handoff record discipline is checkable', () => {
+  const tests = node(['--test', 'scripts/handoff.test.mjs']);
+  const example = node(['scripts/check-handoff.mjs', '--dir', 'examples/handoff']);
+  if (tests.status !== 0) return { status: 1, durationMs: 0, out: tail(tests.out, 300), err: tail(tests.err, 300) };
+  if (example.status !== 0) return { status: 1, durationMs: 0, out: '', err: 'the shipped example record does not pass its own check: ' + example.err };
+  return { status: 0, durationMs: 0, out: 'handoff tests pass and the example record validates', err: '' };
+}, 'exit 0: the four record files exist, the live entry carries status/owner/steps/evidence, and the tests cover failure cases');
 
 step('hygiene', 'no private paths, secrets or host-specific names ship', () => {
   const patterns = JSON.parse(readFileSync(join(ROOT, 'scripts/gate-patterns.json'), 'utf8'));
@@ -208,6 +219,24 @@ function selfTest() {
     { name: 'dispatch no longer a dry run', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace('dispatch_mode: dry_run', 'dispatch_mode: auto_launch'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    { name: 'rigor default is not an engine level', file: 'config/agents.example.yaml',
+      mutate: (t) => t.replace('  default: L2', '  default: L9'),
+      command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    { name: 'a capability the engine does not know', file: 'config/agents.example.yaml',
+      mutate: (t) => t.replace('capabilities: [full, web', 'capabilities: [full, nonsense, web'),
+      command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    { name: 'the evidence grade vocabulary drifts', file: 'config/agents.example.yaml',
+      mutate: (t) => t.replace('grading: [E1, E2, E3, E4]', 'grading: [E1_reproducible, E2_peer_check]'),
+      command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    { name: 'the comparison markers are emptied', file: 'config/agents.example.yaml',
+      mutate: (t) => t.replace(/comparison_words: \[[^\]]*\]/, 'comparison_words: []'),
+      command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    { name: 'the activation anchors are emptied', file: 'config/agents.example.yaml',
+      mutate: (t) => t.replace(/agent_anchors: \[[^\]]*\]/, 'agent_anchors: []'),
+      command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    { name: 'the handoff example loses a required file', file: 'examples/handoff/CURRENT-TASK.md',
+      mutate: (t) => t.replace(/下一步:[^\n]*\r?\n?/, ''),
+      command: (dir) => [process.execPath, [join(ROOT, 'scripts/check-handoff.mjs'), '--dir', dir]] },
   ];
   const results = [];
   for (const m of mutations) {

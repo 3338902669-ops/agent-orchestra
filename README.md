@@ -166,8 +166,19 @@ node scripts/gate.mjs --no-self-test   # skip the gate's own failure test (not r
 ```
 
 The runner checks that the shipped config is usable by the engine, that activation engages on
-intent and stays silent on lookalikes, that the queue engine and the CLI I/O behave, and that
-no private path, secret or host-specific name ships. It writes a machine-readable record
+intent and stays silent on lookalikes, that the queue engine and the CLI I/O behave, that the
+handoff record discipline holds, that the numbers stated in these docs match the suites, and that
+no private path, secret or host-specific name ships.
+
+A shared handoff record can also be checked on its own, which is what the skill asks a successor to
+trust before resuming:
+
+```bash
+node scripts/check-handoff.mjs --dir <shared-record-dir>
+```
+
+It requires the four record files, a live entry carrying status, owner, current step, next step and
+evidence, a recognised status value, and the statement that the record outranks the queue. It writes a machine-readable record
 bound to the git revision and to the SHA-256 of the key artifacts.
 
 It also **proves it can fail**: before reporting PASS it injects known-bad configurations and

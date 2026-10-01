@@ -455,6 +455,11 @@ export function createTask(state, input) {
     externalAction: input.externalAction
       ? { kind: input.externalAction, approved: false, approvedBy: null, scope: null }
       : null,
+    // The task packet from references/task-queue.md, as fields rather than prose. It may be filled
+    // at create time or while completing the specify stage, but it must exist before specify ends.
+    spec: input.spec ? String(input.spec).trim() : null,
+    acceptance: input.acceptance ? String(input.acceptance).trim() : null,
+    nonGoals: input.nonGoals ? String(input.nonGoals).trim() : null,
     evidence: [],
     verification: emptyVerification(),
     createdAt: now(),
@@ -544,6 +549,19 @@ export function completeStage(state, id, agent, result = {}) {
     verify: { phase: 'evidence', agent: stageOwner('evidence') },
     evidence: { phase: 'done', agent: null },
   };
+  // R3: each stage declares its work products, and the specify stage's product is the packet. Leaving
+  // specify without a spec and an acceptance criterion is how "done" becomes unfalsifiable later.
+  if (task.phase === 'specify') {
+    if (result.spec) task.spec = String(result.spec).trim();
+    if (result.acceptance) task.acceptance = String(result.acceptance).trim();
+    if (result.nonGoals) task.nonGoals = String(result.nonGoals).trim();
+    const missing = [];
+    if (!task.spec) missing.push('--spec');
+    if (!task.acceptance) missing.push('--acceptance');
+    if (missing.length) {
+      throw new Error(`Task ${id} cannot leave the specify stage without its work products: ${missing.join(', ')}`);
+    }
+  }
   const nextStep = transitions[task.phase];
   if (!nextStep) throw new Error(`Task ${id} cannot complete unknown phase ${task.phase}`);
   if (nextStep.phase !== 'done' && !nextStep.agent) {

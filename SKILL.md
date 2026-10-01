@@ -7,6 +7,8 @@ Do not use for: container or infrastructure orchestration (k8s, docker-compose, 
 
 # Agent Orchestra
 
+> 中文对照（不随 skill 常驻加载）：`references/zh-contrast.md`
+
 One protocol for two axes of multi-agent work:
 
 - **In-task coordination** - who does what right now, who may write, who verifies, and what counts as done.
@@ -14,7 +16,6 @@ One protocol for two axes of multi-agent work:
 
 Both axes share the same hard rules: one writer per resource, a verifier that is never the implementer, graded evidence, and a shared record that outranks any scheduler. It makes coordination failures visible and recoverable. It cannot promise infallibility, and it never replaces user authorization.
 
-> 中文：一套协议覆盖两条轴 —— **同批任务内怎么分工**，以及**跨会话/跨工具怎么交接**。两条轴共用同一套硬规则：单写入者、核验者≠实现者、分级证据、共享记录优先于调度器。
 
 ## Activation (when to use this skill)
 
@@ -59,7 +60,6 @@ reorganises work that has nothing to do with agents. The description above is wh
 routes on, and an explicit request always wins: if a user says to use this skill, no keyword check
 applies.
 
-> 中文：关键词层是**保守的确定性过滤器**，不是万能的意图理解。命中明确词组与意图正则，同时句级否决「模型对比评测」「人的分工」这类同词不同义的请求；不确定时宁可沉默也不误召。真正的路由依据是上面的 description，且**用户明确要求使用时，一律优先**。
 
 ## Seven non-negotiables
 
@@ -85,7 +85,6 @@ Before the **first write, first dispatch or first verification** of an important
 
 The gate decides *how* work is coordinated. It does **not** authorize irreversible actions. See `references/important-task-intake.md`.
 
-> 中文：重要任务在首次写入/派发/核验前必须问用户三件事（单独还是协作、是否安全扫描、是否独立核验）并留档，不得替用户默认勾选；这三问只决定协作方式，不替代不可逆动作的授权。
 
 ## Fast path
 
@@ -118,7 +117,6 @@ routes:                      # optional: anything omitted is resolved by score
 - Stage owners come from `routes` when the roster names one, otherwise from the score. A roster that can fill no agent for a stage is rejected loudly, never routed by accident.
 - Install a roster of your own with `orchestrator.mjs init --roster <file.json>`. Adding an agent is a data edit: declare it, score it, it joins selection.
 
-> 中文：花名册是**数据**，不是代码 —— 3 个、5 个、12 个都行，名字随便起；选人顺序是「分数高 → 能力标签命中 → 成本低 → id 字典序」，全程可复现，换团队不用改代码。
 
 ## Roles and ownership
 
@@ -150,7 +148,6 @@ Two rules the engine enforces rather than trusting: an **external action can nev
 L1** (it leaves the machine), and an **L3 task cannot reach `done` without E1 evidence** - a
 command, its exit code and the revision it applies to.
 
-> 中文：严格度按**影响面**选，不按兴趣选，而且必须写明、不能靠猜。L1 可自检；L2 必须异体验证 + 正反用例；L3 必须有独立核验、机器产物、审批记录（署名+范围+理由）、**E1 证据**并保留失败记录。外部动作永远不能填 L1；L3 没有 E1 证据到不了 done。
 
 See `references/verification-standard.md` for the ten requirements this is derived from.
 
@@ -163,7 +160,6 @@ Verification is a gate in the same sense as a security scan, except it is run by
 - the gate blocks two things: reaching `done` from `evidence`, and being dispatched to `evidence` at all;
 - a human can override deliberately with `override --task <id> --by <who> --scope <what> --reason <why>` - all three are required, and the failed result is kept next to the override rather than erased.
 
-> 中文：核验就是门禁，但由**你自己团队里按能力选出的 Agent**执行，不绑定任何外部工具。核验者永远不是实现者；失败即退回实现，并同时拦截 done 与 evidence 派发；要放行必须写下署名 + 范围 + 理由，且失败记录不被抹掉。
 
 ## Handoff: the shared record
 
@@ -180,11 +176,15 @@ The five iron rules, in order: **read before acting**, **resume instead of redoi
 
 The record is the authority on intent; the queue is the scheduler. When they disagree, the record wins and the queue is reconciled to it.
 
-> 中文：交接靠**共享记录**而不是聊天记录 —— 交接单、规则、记忆快照、角色表四件套；铁律是「先读再动 / 接续不重做 / 进展留痕 / 切换先交接 / 完成附证据」。共享记录代表意图，队列只是调度器。
 
 Full detail, including the cross-tool checklist and the memory sync routine: `references/handoff.md`.
 
 ## Pipeline and queue
+
+The specify stage cannot end without its **work products**: `--spec` (what is being built) and
+`--acceptance` (how it will be judged), optionally `--non-goals`. A task that cannot state both is
+not ready to implement, and the engine refuses the transition instead of letting work drift into
+something nobody can falsify later.
 
 Stage machine: `specify -> implement -> verify -> evidence -> done`, plus `blocked` and `recovery`.
 
