@@ -108,30 +108,19 @@ function decide(cfg, text) {
   const excludes = (cfg.exclude_keywords ?? []).filter((k) => hay.includes(norm(k)));
   if (excludes.length > 0) return { engaged: false, reason: 'excluded by: ' + excludes.join(',') };
 
-  // Sentence-level veto: comparing or choosing between models is a different job from running
-  // several of them, and no amount of agent vocabulary changes that. The escape hatch keeps
-  // real work that merely mentions a comparison ("...各自改完再对比") engagable.
+  // Comparison handling is where a deterministic filter must stop pretending. "对比这两个模型分别
+  // 负责各自模块开发的能力" and "让两个 agent 协同开发，最后对比哪个版本更好" contain the same
+  // words and need opposite answers; no word list or character window can tell them apart, and
+  // seven verification rounds proved it by moving the hole each time it was patched. So the
+  // ambiguous family is not classified - it is SURFACED to the caller as POSSIBLE, and the host
+  // model (which can read the sentence) decides. What the filter still decides on its own is the
+  // unambiguous case.
   const veto = cfg.comparison_veto ?? {};
   const comparisons = (veto.comparison_words ?? []).filter((w) => hay.includes(norm(w)));
-  const attributeNouns = veto.attribute_nouns ?? [];
-  // An escape only counts when collaborating is something the sentence DOES, not something it
-  // compares. "协同能力" describes an attribute, so it cannot release the veto.
-  const collaborationActs = (veto.collaboration_words ?? []).filter((w) => {
-    if (!hay.includes(norm(w))) return false;
-    if (attributeNouns.length === 0) return true;
-    // Allow a short modifier between the word and the attribute noun: "协同开发能力" describes an
-    // attribute just as much as "协同能力" does, and pinning the guard to zero distance only moved
-    // the hole one word to the right.
-    const attributeForm = new RegExp(w + '\\S{0,6}?(' + attributeNouns.join('|') + ')');
-    return !attributeForm.test(text);
-  });
-  const collaborations = collaborationActs;
-  if (comparisons.length > 0 && collaborations.length === 0) {
-    return {
-      engaged: false,
-      reason: 'comparison/evaluation request, not orchestration (' + comparisons.join(', ') + ')',
-    };
-  }
+  const attributeNouns = (veto.attribute_nouns ?? []).filter((w) => hay.includes(norm(w)));
+  const escapeActs = (veto.collaboration_words ?? []).filter((w) => hay.includes(norm(w)));
+  const possible = (reason, extra = {}) => ({ engaged: false, possible: true, reason, ...extra });
+  const notEngaged = (reason, extra = {}) => ({ engaged: false, possible: false, reason, ...extra });
 
   const hits = (cfg.keywords ?? []).filter((k) => hay.includes(norm(k)));
   const allPatternHits = compilePatterns(cfg).filter((p) => p.re.test(text)).map((p) => p.source);
@@ -146,6 +135,21 @@ function decide(cfg, text) {
   const subjects = [...anchors, ...objects];
   const patternHits = gated ? (subjects.length && acts.length ? allPatternHits : []) : allPatternHits;
 
+  if (comparisons.length > 0) {
+    if (attributeNouns.length > 0) {
+      // A comparison word plus a capability noun: the sentence is measuring an ability, whichever
+      // order the words arrive in and however far apart they sit.
+      return possible('compares a capability (' + comparisons[0] + ' + ' + attributeNouns[0] + ')', { comparisons });
+    }
+    if (escapeActs.length === 0 && (hits.length || allPatternHits.length || acts.length)) {
+      return possible('comparison wording alongside coordination wording (' + comparisons[0] + ')', { comparisons });
+    }
+    if (escapeActs.length === 0) {
+      return notEngaged('comparison/evaluation request, not orchestration (' + comparisons.join(', ') + ')', { comparisons });
+    }
+    // A strong action is present ("各自写完再对比"): fall through and engage normally.
+  }
+
   if (cfg.match === 'all') {
     const missingKeywords = (cfg.keywords ?? []).filter((k) => !hay.includes(norm(k)));
     const missingPatterns = compilePatterns(cfg).filter((p) => !p.re.test(text)).map((p) => p.source);
@@ -158,13 +162,14 @@ function decide(cfg, text) {
   if (hits.length === 0 && allPatternHits.length > 0 && gated && !(subjects.length && acts.length)) {
     return {
       engaged: false,
+      possible: false,
       reason: 'a coordination phrase without a subject (agent or artifact) or without an act of coordinating'
         + (subjects.length ? '' : ' (no agent or artifact named)') + (acts.length ? '' : ' (no act of coordinating)'),
       anchors, objects, acts,
     };
   }
   if (hits.length === 0 && patternHits.length === 0) {
-    return { engaged: false, reason: 'no keyword or pattern matched' };
+    return notEngaged('no keyword or pattern matched');
   }
   return {
     engaged: true,
@@ -209,5 +214,7 @@ const detail = [
   result.hits?.length ? 'hits: ' + result.hits.join(', ') : null,
   result.patternHits?.length ? 'patterns: ' + result.patternHits.length : null,
 ].filter(Boolean).join(' | ');
-console.log(result.engaged ? 'ENGAGED' : 'NOT_ENGAGED', '|', detail);
-process.exit(result.engaged ? 0 : 1);
+const label = result.engaged ? 'ENGAGED' : (result.possible ? 'POSSIBLE' : 'NOT_ENGAGED');
+console.log(label, '|', detail);
+// 0 = engage, 3 = ambiguous, surface it to the caller, 1 = stay silent
+process.exit(result.engaged ? 0 : (result.possible ? 3 : 1));

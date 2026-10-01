@@ -51,6 +51,7 @@ const MUST_NOT_ENGAGE = ACTIVATION_CASES.mustNotEngage;
 // Loaded from scripts/activation-cases.json: one list, shared with the verifier evidence
 // collector, so the two cannot drift apart the way hand-copied lists do.
 const KNOWN_FALSE_ENGAGE = ACTIVATION_CASES.knownLimits;
+const AMBIGUOUS = ACTIVATION_CASES.ambiguous;
 
 test('activation engages on how people describe the problem', () => {
   const missed = MUST_ENGAGE.filter((t) => !engages(t).engaged);
@@ -71,6 +72,18 @@ test('known limitation F-008: meta-discourse about collaboration still engages',
       ' no longer engages - if that is an improvement, update KNOWN-FINDINGS.md and this test',
   );
   assert.match(readFileSync(cli('KNOWN-FINDINGS.md'), 'utf8'), /F-008/, 'F-008 must be registered');
+});
+
+test('ambiguous requests are surfaced as POSSIBLE, never guessed', () => {
+  // Seven verification rounds showed that comparing models and coordinating models share every
+  // word; a deterministic filter cannot tell them apart. The contract is therefore three-valued:
+  // these exit 3 so the caller decides, instead of being silently misclassified either way.
+  const wrong = AMBIGUOUS.map((t) => {
+    const r = run('scripts/detect-trigger.mjs', ['--config', cli('config/agents.example.yaml'), '--text', t]);
+    return { t, code: r.code };
+  }).filter((x) => x.code !== 3);
+  assert.deepEqual(wrong, [], 'these must return exit 3 (POSSIBLE): ' + JSON.stringify(wrong));
+  assert.ok(AMBIGUOUS.length >= 5);
 });
 
 test('the detector fails loudly when the config has no signals', () => {

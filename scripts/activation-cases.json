@@ -1,6 +1,6 @@
 {
-  "schema": "agent-orchestra/activation-cases@1",
-  "note": "Single source of truth for the activation contract: the acceptance test and the verifier evidence collector both read this file, so they cannot drift apart. Round 6 added the semantic family where collaboration is the compared attribute with a modifier in between (协同开发能力 / 协同工作效率 / 谁更适合做协同开发).",
+  "schema": "agent-orchestra/activation-cases@2",
+  "note": "Single source of truth for the activation contract: the acceptance test and the verifier evidence collector both read this file, so they cannot drift apart. Round 6 added the semantic family where collaboration is the compared attribute with a modifier in between (协同开发能力 / 协同工作效率 / 谁更适合做协同开发). @2 adds the ambiguous family: requests that mix comparison wording with coordination wording cannot be classified by a deterministic filter, so they return exit 3 (POSSIBLE) and the host decides.",
   "mustEngage": [
     "让 AI 们一起把这个需求做了",
     "我要用三个 AI 一起做",
@@ -22,7 +22,8 @@
     "让两个 agent 各写一个版本，最后我来对比哪个好",
     "让 Claude 和 GPT 各做一个模块，最后我看下哪个做得好",
     "把任务交接给下一个 agent",
-    "让另一个 agent 做独立核验"
+    "让另一个 agent 做独立核验",
+    "让两个 agent 分别做，最后我对比一下哪个版本更好"
   ],
   "mustNotEngage": [
     "帮我写个 k8s 编排文件",
@@ -59,5 +60,17 @@
     "写一篇关于 AI 助手如何协同的文章",
     "做 AI 一起协作的调研",
     "删掉关于 AI 助手协同的注释"
+  ],
+  "exitCodes": {
+    "engaged": 0,
+    "possible": 3,
+    "notEngaged": 1
+  },
+  "ambiguous": [
+    "对比这两个模型分别负责各自模块开发的能力",
+    "让两个 agent 协同开发这个功能，最后对比哪个版本更好",
+    "帮我对比一下这两个 AI 助手的协同能力",
+    "对比一下 GPT 和 Claude 的协同工作效率",
+    "对比一下这两个模型谁更适合做协同开发"
   ]
 }

@@ -28,7 +28,19 @@ Configure in `config/agents.example.yaml` under `activation:`.
 
 1. Read the activation block from `config/agents.example.yaml`.
 2. global -> engage. manual -> engage only when the user asked for multi-agent work or a handoff.
-3. keyword -> run `node scripts/detect-trigger.mjs --text "<task text>"`. Exit 0 (ENGAGED) means use this skill; 1 (NOT_ENGAGED) means do not. Exclude keywords, and the sentence-level comparison veto, win over any hit.
+3. keyword -> run `node scripts/detect-trigger.mjs --text "<task text>"` and read the exit code:
+
+| exit | label | meaning | what to do |
+|---|---|---|---|
+| **0** | ENGAGED | the sentence names an agent subject **and** an act of coordinating, with no comparison reading | use the skill |
+| **3** | POSSIBLE | ambiguous by construction: comparing models and coordinating models use the same words ("对比这两个模型的协同开发能力" / "让两个 agent 协同开发，最后对比哪个版本") | decide from the sentence yourself, or ask - **do not treat it as a hit or a miss** |
+| **1** | NOT_ENGAGED | no signal, an exclude keyword, or a plain comparison ("评估这两个模型的准确率") | stay silent |
+
+Exit 3 exists because seven adversarial verification rounds proved that no word list or character
+window can separate those two readings; each patch simply moved the hole. So the filter does not
+guess. It decides the unambiguous cases and **surfaces** the rest.
+
+Exclude keywords win over any hit.
 
 What the keyword layer is, honestly: a **conservative deterministic filter**, not a full
 understanding of intent. Unambiguous phrases engage on their own. Anything a pattern catches must
