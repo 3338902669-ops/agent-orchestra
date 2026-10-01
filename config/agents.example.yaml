@@ -87,6 +87,13 @@ activation:
     # Moved out of keywords: ambiguous on their own, safe once an agent subject is required.
     - '交接|交接班|接力干活'
     - '(独立|交叉|第三方|外部|另一个)\s*(核验|复核|复验|复检)'
+  # Asking ABOUT coordination is not asking to coordinate. Question and evaluation markers are a
+  # closed grammatical class (what/how/why, pros-cons, difference, or-else, recommend), unlike the
+  # open synonym space of "compare" - and unlike a keyword, a question never implies a request.
+  # Three ways a sentence can be ABOUT coordination rather than a request to do it: it asks
+  # (什么/如何/吗), it evaluates (区别/优缺点/还是/推荐), or it produces content about it
+  # (文章/报告/调研). All three downgrade a keyword hit to POSSIBLE.
+  inquiry_words: [什么, 甚么, 怎么, 怎样, 如何, 为什么, 为啥, 吗, 呢, ？, ?, 是不是, 有没有, 介绍, 解释, 含义, 意思, 概念, 定义, 区别, 差异, 优缺点, 利弊, 好处, 坏处, 还是, 推荐, 值得, 该不该, 要不要, 值不值, 是什么, 有哪些, 分析, 评估, 评价, 文章, 报告, 调研, 论文, 教程, 文档, 笔记, 博客, 推文, 课件, 讲义, 科普, 综述, 白皮书, 说明]
   # A request to compare, evaluate or choose between models/assistants is NOT orchestration, no
   # matter how many agent words it contains. The veto is sentence-level and only fires when the
   # sentence carries no collaboration signal of its own, so "让两个 agent 分别改，再对比结果"

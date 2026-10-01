@@ -33,7 +33,7 @@ function readYamlSection(file) {
   const lines = raw.split(/\r?\n/);
   const out = {
     mode: 'keyword', match: 'any', case_sensitive: false,
-    keywords: [], patterns: [], exclude_keywords: [], agent_anchors: [], software_objects: [], coordination_acts: [],
+    keywords: [], patterns: [], exclude_keywords: [], agent_anchors: [], software_objects: [], coordination_acts: [], inquiry_words: [],
     comparison_veto: { comparison_words: [], collaboration_words: [], attribute_nouns: [] },
   };
   let inActivation = false, inList = null;
@@ -67,6 +67,7 @@ function readYamlSection(file) {
       software_objects: 'software_objects',
       attribute_nouns: 'comparison_veto.attribute_nouns',
       coordination_acts: 'coordination_acts',
+      inquiry_words: 'inquiry_words',
     }[key];
     if (raw.startsWith('[')) {
       const items = raw.replace(/^\[/, '').replace(/\]\s*$/, '')
@@ -174,8 +175,15 @@ function decide(cfg, text) {
   // the next unlisted X. So patterns SURFACE the sentence (exit 3) and only a curated, self-anchored
   // keyword phrase auto-engages. Downgrading costs the host one decision it is better equipped to
   // make than a word list; a wrong engage is a decision the filter made alone.
-  if (hits.length > 0) {
+  // Knowing the vocabulary is not asking to use it. A question or an evaluation about the topic
+  // ("什么是 multi-agent", "multi-agent 和 single-agent 的优缺点") matches a keyword and is still
+  // not a request to coordinate, so it is surfaced rather than engaged.
+  const inquiries = (cfg.inquiry_words ?? []).filter((w) => hay.includes(norm(w)));
+  if (hits.length > 0 && inquiries.length === 0) {
     return { engaged: true, reason: 'keyword matched', hits, patternHits };
+  }
+  if (hits.length > 0) {
+    return possible('keyword inside a question or evaluation (' + inquiries[0] + ')', { hits, inquiries });
   }
   if (patternHits.length > 0) {
     return possible('coordination phrasing without an unambiguous keyword (' + patternHits.length + ' pattern(s))', { patternHits });

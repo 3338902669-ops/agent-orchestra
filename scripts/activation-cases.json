@@ -39,6 +39,7 @@
     "notEngaged": 1
   },
   "ambiguous": [
+    "帮我写一篇关于 multi-agent 的文章",
     "让 AI 们一起把这个需求做了",
     "我要用三个 AI 一起做",
     "几个 agent 同时改代码冲突了",
@@ -66,7 +67,16 @@
     "让两个 agent 协同开发这个功能，最后对比哪个版本更好",
     "写一篇关于 AI 助手如何协同的文章",
     "做 AI 一起协作的调研",
-    "删掉关于 AI 助手协同的注释"
+    "删掉关于 AI 助手协同的注释",
+    "帮我分析 multi-agent 和 single-agent 的优缺点",
+    "multi-agent 还是 single-writer 更适合这个项目",
+    "single-writer 和 multi-agent 的区别是什么",
+    "帮我推荐 independent verification 还是 code review",
+    "multi-agent 和 single-agent 各自的好处",
+    "这个项目用 multi-agent 还是单 agent，帮我定",
+    "multi-agent 的好处坏处各是什么",
+    "什么是 multi-agent",
+    "single-writer 规则是什么意思"
   ],
   "rule": "exit 0: a curated self-anchored keyword phrase matched and no comparison marker is present. exit 3: coordination phrasing without such a keyword, or a comparison marker alongside a coordination signal - the caller decides. exit 1: no signal, an exclude keyword, or a comparison with no coordination signal."
 }
