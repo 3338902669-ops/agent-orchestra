@@ -12,7 +12,7 @@ three fidelity gaps. Each was reproduced before being fixed.
   YAML scalar containing ": ", which YAML reads as a nested mapping - GitHub rendered "mapping values
   are not allowed in this context". The gate checked for the presence of `name:` and `description:`
   with a regex, so it reported PASS on a document no parser would accept. The description is now a
-  block scalar, and `scripts/check-frontmatter.mjs` PARSES the subset of YAML a frontmatter may use
+  block scalar, and `scripts/check-frontmatter.mjs` parses the SUPPORTED FRONTMATTER SUBSET (it is not a general YAML implementation - no anchors, no nested maps)
   (plain scalars containing ": " are rejected with a line number). The self-test now includes that
   exact mutation, so the false qualification cannot return.
 - **The L2 evidence floor was documented but not enforced.** `completeStage` tested only whether the

@@ -174,20 +174,33 @@ step('benchmark', 'the protocol still stops every failure mode the README claims
   return { status: 0, durationMs: 0, out: rows.length + ' failure modes, protocol column all zero', err: '' };
 }, 'exit 0: every failure mode is stopped by the engine');
 
+step('conformance', 'every MUST maps to enforcement and a test, and the table cannot drift', () =>
+  node(['scripts/check-conformance.mjs']),
+  'exit 0: every reference resolves, every ENFORCED row has enforcement + a pinning test, and CONFORMANCE.md matches conformance.json');
+
 step('line-endings', 'shell scripts ship with LF, so they run where they are unpacked', () => {
   // An independent reviewer unpacked the published ZIP and ran `bash -n scripts/install.sh`, which
   // failed with "syntax error near unexpected token `\$'in\r'". .gitattributes normalises on
   // checkout, but the ZIP is built from the working tree, so the shipping artifact has to be checked
   // rather than assumed.
+  // The whole shipped tree, not just the installers: a reviewer found CRLF in promotion.md and
+  // references/agent-manifest.schema.json after install.sh had already been fixed.
   const problems = [];
-  for (const file of ['scripts/install.sh', 'scripts/install.ps1']) {
-    const bytes = readFileSync(join(ROOT, file));
-    const crlf = (bytes.toString('utf8').match(/\r\n/g) || []).length;
-    if (crlf > 0) problems.push(file + ': ' + crlf + ' CRLF line endings');
-  }
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === 'evidence') continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (/\.(png|jpg|jpeg|gif|webp|zip|ico)$/i.test(entry.name)) continue;
+      const bytes = readFileSync(full);
+      const crlf = (bytes.toString('utf8').match(/\r\n/g) || []).length;
+      if (crlf > 0) problems.push(relative(ROOT, full) + ': ' + crlf + ' CRLF line endings');
+    }
+  };
+  walk(ROOT);
   return problems.length
     ? { status: 1, durationMs: 0, out: '', err: problems.join('\n') }
-    : { status: 0, durationMs: 0, out: 'installers are LF-clean', err: '' };
+    : { status: 0, durationMs: 0, out: 'every shipped text file is LF-clean', err: '' };
 }, 'exit 0: no CRLF in the shell scripts that ship in the ZIP');
 
 step('config-usage', 'no config key pretends to be behaviour the engine does not have', () => {
@@ -282,6 +295,9 @@ function selfTest() {
     { name: 'the activation anchors are emptied', target: 'mutated.yaml', file: 'config/agents.example.yaml',
       mutate: (t) => t.replace(/agent_anchors: \[[^\]]*\]/, 'agent_anchors: []'),
       command: (dir) => [process.execPath, [join(ROOT, 'scripts/validate-config.mjs'), join(dir, 'mutated.yaml')]] },
+    { name: 'a shipped file reverts to CRLF', target: 'install-crlf.sh', file: 'scripts/install.sh',
+      mutate: (t) => t.replace(/\n/g, '\r\n'),
+      command: () => [process.execPath, ['-e', 'const{readFileSync}=require(\'fs\');const b=readFileSync(\'agent-orchestra/scripts/install.sh\',\'utf8\');process.exit(/\\r/.test(b)?1:0)']] },
     // The bug an independent reviewer found on GitHub: the gate's regex was happy while YAML was not.
     { name: 'the description becomes a plain scalar containing a colon (the GitHub YAML error)', target: 'MUTATED-SKILL.md', file: 'SKILL.md',
       mutate: (t) => t.replace('description: >-', 'description: Use when several agents coordinate: the rules are enforced'),

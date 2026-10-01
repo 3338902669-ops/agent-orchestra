@@ -1179,3 +1179,34 @@ test('a clean run passes the gate with no override', () => {
   assert.equal(task.verification.override, null);
   assert.equal(task.verification.attempts, 1);
 });
+
+test('an L3 task refuses to run when no domain-qualified third party exists', () => {
+  // Independence is not competence: with nobody scored for the domain role, the domain review must
+  // block instead of letting any third-party verifier stand in for it.
+  const roster = {
+    agents: {
+      impl:  { cost: 1, scores: { specify: 3, triage: 1, implement: 3, verify: 1, evidence: 1, environment: 1 } },
+      ver:   { cost: 2, scores: { specify: 1, triage: 1, implement: 1, verify: 3, evidence: 2, environment: 1 } },
+      spare: { cost: 3, scores: { specify: 1, triage: 1, implement: 1, verify: 2, evidence: 2, environment: 1 } },
+    },
+    routes: { specify: 'impl', implement: 'impl', verify: 'ver', evidence: 'spare' },
+  };
+  const state = createState(roster);
+  const created = createTask(state, { title: 'consequential', rigor: 'L3',
+    executionMode: 'collaborative', security: 'planned', independentVerify: 'planned' });
+  const e1 = { grade: 'E1', text: 'ran it', command: 'npm test', exitCode: 0, revision: 'abc' };
+  assert.throws(() => driveToDone(created.state, created.task.id, e1), /domain/);
+});
+
+test('a route named after a prototype member is ignored, not resolved', () => {
+  // `agents['constructor']` resolves through Object.prototype, so a route named after a prototype
+  // member used to hand the task to an agent that does not exist.
+  const roster = {
+    agents: { real: { cost: 1, scores: { specify: 3, implement: 2, verify: 1, evidence: 1, environment: 1 } } },
+    routes: { specify: 'constructor', implement: 'toString', verify: '__proto__' },
+  };
+  const state = createState(roster);
+  const created = createTask(state, { title: 'prototype route' });
+  const owner = created.task.assignedAgent;
+  assert.equal(owner, 'real', 'a prototype member must not become an agent');
+});

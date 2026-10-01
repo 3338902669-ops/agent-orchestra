@@ -1,0 +1,480 @@
+{
+  "schema": "agent-orchestra/conformance@1",
+  "note": "Every row is checked by scripts/check-conformance.mjs: the references must resolve, and ENFORCED requires both enforcement and a pinning test.",
+  "requirements": [
+    {
+      "id": "T1",
+      "contract": "Task",
+      "requirement": "A task MUST declare a type, a rigor level and an owner at every stage",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:createTask",
+        "symbol:ownerFor"
+      ],
+      "pinnedBy": [
+        "test:a new task is queued in specify and owned by the coordinator"
+      ]
+    },
+    {
+      "id": "T2",
+      "contract": "Task",
+      "requirement": "specify MUST NOT end without a spec and an acceptance criterion",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:completeStage"
+      ],
+      "pinnedBy": [
+        "test:the specify stage cannot end without a spec and an acceptance criterion"
+      ]
+    },
+    {
+      "id": "T3",
+      "contract": "Task",
+      "requirement": "A task carrying an external action MUST be L3",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:createTask"
+      ],
+      "pinnedBy": [
+        "test:an external action must be L3 - L1 and L2 are both refused"
+      ]
+    },
+    {
+      "id": "T4",
+      "contract": "Task",
+      "requirement": "An L3 task MUST answer the three intake questions even without --important",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:createTask"
+      ],
+      "pinnedBy": [
+        "test:an L3 task must state the three start choices, even without --important"
+      ]
+    },
+    {
+      "id": "R1",
+      "contract": "Resource",
+      "requirement": "No two live tasks may hold an overlapping resource",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:claimTask"
+      ],
+      "pinnedBy": [
+        "test:a resource held by a live task cannot be claimed by another task"
+      ]
+    },
+    {
+      "id": "R2",
+      "contract": "Resource",
+      "requirement": "A refused claim MUST name the resource and its holder",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:claimTask"
+      ],
+      "pinnedBy": [
+        "test:a resource held by a live task cannot be claimed by another task"
+      ]
+    },
+    {
+      "id": "R3",
+      "contract": "Resource",
+      "requirement": "A resource lock is held for a stage, not for the life of the task",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:completeStage"
+      ],
+      "pinnedBy": [
+        "test:claim and complete release the lock between stages"
+      ]
+    },
+    {
+      "id": "O1",
+      "contract": "Ownership",
+      "requirement": "Exactly one agent holds a task; only the holder may act on it",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:requireOwner"
+      ],
+      "pinnedBy": [
+        "test:a held lock rejects a second agent"
+      ]
+    },
+    {
+      "id": "O2",
+      "contract": "Ownership",
+      "requirement": "A stale lock MUST be recoverable, and the recovery recorded",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:recoverTask"
+      ],
+      "pinnedBy": [
+        "test:recover clears a stranded lock, keeps the phase and re-queues the task"
+      ]
+    },
+    {
+      "id": "O3",
+      "contract": "Ownership",
+      "requirement": "State MUST be written atomically under an exclusive lock",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/orchestrator/orchestrator.mjs"
+      ],
+      "pinnedBy": [
+        "test:four concurrent creates: every task survives (no lost update)"
+      ]
+    },
+    {
+      "id": "O4",
+      "contract": "Ownership",
+      "requirement": "Roster lookups MUST use own properties, not the prototype chain",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:namedOwner"
+      ],
+      "pinnedBy": [
+        "test:a route named after a prototype member is ignored, not resolved"
+      ]
+    },
+    {
+      "id": "H1",
+      "contract": "Handoff",
+      "requirement": "The record MUST carry status, owner, current step, next step and evidence",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/check-handoff.mjs"
+      ],
+      "pinnedBy": [
+        "test:a missing field fails: a successor cannot resume without it"
+      ]
+    },
+    {
+      "id": "H2",
+      "contract": "Handoff",
+      "requirement": "The precedence claim MUST be positive; a negated one MUST be refused",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/check-handoff.mjs"
+      ],
+      "pinnedBy": [
+        "test:a negated precedence claim does not satisfy the requirement"
+      ]
+    },
+    {
+      "id": "H3",
+      "contract": "Handoff",
+      "requirement": "The record outranks the queue at runtime",
+      "status": "DOCUMENTED ONLY",
+      "enforcedBy": [],
+      "pinnedBy": [],
+      "note": "The engine checks the record but does not reconcile it against the queue; precedence is a rule agents follow with a timestamped entry (F-011)."
+    },
+    {
+      "id": "V1",
+      "contract": "Verification",
+      "requirement": "The verifier MUST NOT be the implementer at L2 and L3",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:selectVerifier"
+      ],
+      "pinnedBy": [
+        "test:the verifier is never the implementer (every type)"
+      ]
+    },
+    {
+      "id": "V2",
+      "contract": "Verification",
+      "requirement": "An important task MUST NOT self-verify at any level",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:completeStage"
+      ],
+      "pinnedBy": [
+        "test:an important task may not self-verify, even at L1"
+      ]
+    },
+    {
+      "id": "V3",
+      "contract": "Verification",
+      "requirement": "A verification PASS MUST arrive with criterion-linked evidence",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:completeStage"
+      ],
+      "pinnedBy": [
+        "test:a verification PASS must carry its witness"
+      ]
+    },
+    {
+      "id": "V4",
+      "contract": "Verification",
+      "requirement": "A failed verification MUST block done and dispatch to evidence",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:failVerification",
+        "symbol:nextDispatch"
+      ],
+      "pinnedBy": [
+        "test:the gate cannot be walked past: no done without a pass or an override"
+      ]
+    },
+    {
+      "id": "V5",
+      "contract": "Verification",
+      "requirement": "At L3 the verifier MUST NOT be an author of the task's evidence",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:completeStage"
+      ],
+      "pinnedBy": [
+        "test:an L3 verifier may not also be an author of the evidence"
+      ]
+    },
+    {
+      "id": "V6",
+      "contract": "Verification",
+      "requirement": "Consequential work MUST pass a domain review by a domain-qualified third party",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:selectDomainReviewer"
+      ],
+      "pinnedBy": [
+        "test:an L3 task refuses to run when no domain-qualified third party exists"
+      ]
+    },
+    {
+      "id": "E1",
+      "contract": "Evidence",
+      "requirement": "E1 MUST carry a command, an exit code and a revision",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:normalizeEvidence"
+      ],
+      "pinnedBy": [
+        "test:E1 evidence carrying explicit nulls is refused, not just undefined"
+      ]
+    },
+    {
+      "id": "E2",
+      "contract": "Evidence",
+      "requirement": "E2 MUST name a peer, and the peer MUST NOT be the author",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:normalizeEvidence"
+      ],
+      "pinnedBy": [
+        "test:E2 must name a peer, and the peer must not be the author"
+      ]
+    },
+    {
+      "id": "E3",
+      "contract": "Evidence",
+      "requirement": "An ungraded sentence MUST be recorded as E3 with a note",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:normalizeEvidence"
+      ],
+      "pinnedBy": [
+        "test:a bare evidence string is stored as E3 and labelled, never as E1"
+      ]
+    },
+    {
+      "id": "E4",
+      "contract": "Evidence",
+      "requirement": "E4 MUST say what is planned",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:normalizeEvidence"
+      ],
+      "pinnedBy": [
+        "test:E4 must say what is planned"
+      ]
+    },
+    {
+      "id": "E5",
+      "contract": "Evidence",
+      "requirement": "The per-level floor: L1 any grade, L2 E1/E2, L3 E1",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:completeStage"
+      ],
+      "pinnedBy": [
+        "test:L2 requires E1 or E2 evidence: a self-report cannot close it"
+      ]
+    },
+    {
+      "id": "E6",
+      "contract": "Evidence",
+      "requirement": "E1 attests that the command actually ran",
+      "status": "OUT OF SCOPE",
+      "enforcedBy": [],
+      "pinnedBy": [],
+      "note": "E1 is a structural check, not provenance: the engine confirms the fields exist, not that the command ran. A runner-generated receipt is the fix (F-012)."
+    },
+    {
+      "id": "A1",
+      "contract": "Approval",
+      "requirement": "An external action at its step MUST NOT be dispatched before approval",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:nextDispatch"
+      ],
+      "pinnedBy": [
+        "test:an unapproved external action blocks its own step, not the internal stages"
+      ]
+    },
+    {
+      "id": "A2",
+      "contract": "Approval",
+      "requirement": "The approval scope MUST equal the action's target",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:nextDispatch"
+      ],
+      "pinnedBy": [
+        "test:an approval scope must EQUAL the action target, not merely appear in it"
+      ]
+    },
+    {
+      "id": "A3",
+      "contract": "Approval",
+      "requirement": "An approval MUST record an approver and a scope",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:approveExternalAction"
+      ],
+      "pinnedBy": [
+        "test:approval requires both approvedBy and scope"
+      ]
+    },
+    {
+      "id": "A4",
+      "contract": "Approval",
+      "requirement": "The approver's identity is authenticated",
+      "status": "OUT OF SCOPE",
+      "enforcedBy": [],
+      "pinnedBy": [],
+      "note": "The approver is an unauthenticated string; the queue is a local JSON ledger. This is a discipline with a record, not an authorisation server (F-003, F-011)."
+    },
+    {
+      "id": "C1",
+      "contract": "Recovery",
+      "requirement": "Three failed verifications MUST block the task",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:failVerification"
+      ],
+      "pinnedBy": [
+        "test:three failed verifications block the task instead of retrying forever"
+      ]
+    },
+    {
+      "id": "C2",
+      "contract": "Recovery",
+      "requirement": "A blocked task MUST refuse claims, completions and approvals",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:claimTask",
+        "symbol:completeStage"
+      ],
+      "pinnedBy": [
+        "test:a blocked task refuses claim, complete and approve"
+      ]
+    },
+    {
+      "id": "C3",
+      "contract": "Recovery",
+      "requirement": "Recovery MUST be explicit and MUST state a reason",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:recoverTask"
+      ],
+      "pinnedBy": [
+        "test:recover requires a reason and refuses unrecoverable tasks"
+      ]
+    },
+    {
+      "id": "C4",
+      "contract": "Recovery",
+      "requirement": "A non-dispatchable task MUST NOT be reported as success",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "symbol:nextDispatch"
+      ],
+      "pinnedBy": [
+        "test:dispatch throws for non-dispatchable tasks"
+      ]
+    },
+    {
+      "id": "X1",
+      "contract": "Activation",
+      "requirement": "Engagement MUST require a curated keyword and an act of coordinating",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/detect-trigger.mjs"
+      ],
+      "pinnedBy": [
+        "test:activation engages on how people describe the problem"
+      ]
+    },
+    {
+      "id": "X2",
+      "contract": "Activation",
+      "requirement": "A comparison or evaluation request MUST NOT auto-engage",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/detect-trigger.mjs"
+      ],
+      "pinnedBy": [
+        "test:activation stays silent on ordinary requests that share a word"
+      ]
+    },
+    {
+      "id": "X3",
+      "contract": "Activation",
+      "requirement": "Ambiguous phrasing MUST be surfaced, not guessed",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/detect-trigger.mjs"
+      ],
+      "pinnedBy": [
+        "test:ambiguous requests are surfaced as POSSIBLE, never guessed"
+      ]
+    },
+    {
+      "id": "G1",
+      "contract": "Gate",
+      "requirement": "The gate MUST inject known faults and reject every one",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/gate.mjs"
+      ],
+      "pinnedBy": [
+        "gate:the description becomes a plain scalar containing a colon (the GitHub YAML error)"
+      ]
+    },
+    {
+      "id": "G2",
+      "contract": "Gate",
+      "requirement": "SKILL.md frontmatter MUST parse, not merely contain the keys",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/check-frontmatter.mjs"
+      ],
+      "pinnedBy": [
+        "gate:the description becomes a plain scalar containing a colon (the GitHub YAML error)"
+      ]
+    },
+    {
+      "id": "G3",
+      "contract": "Gate",
+      "requirement": "Shipped text files MUST be LF so scripts run where they are unpacked",
+      "status": "ENFORCED",
+      "enforcedBy": [
+        "file:scripts/gate.mjs"
+      ],
+      "pinnedBy": [
+        "gate:a shipped file reverts to CRLF"
+      ]
+    }
+  ]
+}
