@@ -150,8 +150,18 @@ step('handoff', 'the handoff record discipline is checkable', () => {
 }, 'exit 0: the four record files exist, the live entry carries status/owner/steps/evidence, and the tests cover failure cases');
 
 step('hygiene', 'no private paths, secrets or host-specific names in the repository or the package', () => {
-  const patterns = JSON.parse(readFileSync(join(ROOT, 'scripts/gate-patterns.json'), 'utf8'));
-  const self = join(ROOT, 'scripts/gate-patterns.json');
+  // Host-specific names live in a file that is not committed: a denylist listing the clients it
+  // protects publishes them. Absent (a fresh checkout, CI) the generic set still runs, and the step
+  // says which set it used so the narrower coverage is visible rather than silent.
+  const generic = JSON.parse(readFileSync(join(ROOT, 'scripts/gate-patterns.json'), 'utf8'));
+  const localPath = join(ROOT, 'scripts/gate-patterns.local.json');
+  const local = existsSync(localPath) ? JSON.parse(readFileSync(localPath, 'utf8')) : null;
+  const patterns = {
+    privatePaths: [...generic.privatePaths, ...(local?.privatePaths ?? [])],
+    secrets: [...generic.secrets, ...(local?.secrets ?? [])],
+    disallowedProductNames: [...generic.disallowedProductNames, ...(local?.disallowedProductNames ?? [])],
+  };
+  const self = [join(ROOT, 'scripts/gate-patterns.json'), localPath];
   const hits = [];
   // The scan covers what GIT WOULD COMMIT, not what the package would ship. Those sets differ, and
   // conflating them caused a real leak: the package build skips dot-entries (agent runtimes,
@@ -170,7 +180,7 @@ step('hygiene', 'no private paths, secrets or host-specific names in the reposit
     candidates = walkRepo(ROOT);
   }
   for (const file of candidates) {
-    if (file === self) continue;
+    if (self.includes(file)) continue;
     if (!/\.(md|mjs|cjs|js|json|ya?ml|txt)$/.test(file)) continue;
     const text = readFileSync(file, 'utf8');
     const all = [...patterns.privatePaths, ...patterns.secrets].map((s) => new RegExp(s));
@@ -185,10 +195,15 @@ step('hygiene', 'no private paths, secrets or host-specific names in the reposit
       if (new RegExp('\\b' + name + '\\b', 'i').test(text)) hits.push(relative(ROOT, file) + ': host-specific name "' + name + '"');
     }
   }
+  // Say which pattern set ran. A checkout without the local file has narrower coverage, and narrower
+  // coverage that reports itself as a plain pass is how a check quietly stops checking.
+  const coverage = local
+    ? 'generic + local sets (' + patterns.privatePaths.length + ' paths, ' + patterns.secrets.length + ' secret forms, ' + patterns.disallowedProductNames.length + ' names)'
+    : 'generic set only - gate-patterns.local.json is absent, so this machine\'s agent and client names were NOT checked';
   return hits.length
     ? { status: 1, durationMs: 0, out: hits.join('\n'), err: '' }
-    : { status: 0, durationMs: 0, out: 'no private paths, secrets or host-specific names', err: '' };
-}, 'exit 0: zero matches across every shipped file');
+    : { status: 0, durationMs: 0, out: 'no private paths, secrets or host-specific names [' + coverage + ']', err: '' };
+}, 'exit 0: zero matches across every file git would commit, and the report names the pattern set used');
 
 step('benchmark', 'the protocol still stops every failure mode the README claims it stops', () => {
   const r = node(['bench/protocol-benchmark.mjs']);

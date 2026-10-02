@@ -1,10 +1,15 @@
 
 # Per-run gate evidence (machine-readable; regenerate with: node scripts/gate.mjs)
 evidence/
-# an agent runtime that works in this directory keeps its session state here
-.rivet/
-.rivet
 
-# verification artefacts written by a dispatched verifier: they carry this machine queue and its
-# client task titles, so they stay out of the repository (and out of the package).
-.verify-*/
+# Every dot-entry is runtime state, evidence or cache - never source. Stated generically so the rule
+# covers directories nobody has invented yet, which is the class that leaked a verifier transcript into
+# this public repository, and so the ignore file does not have to name the agents and tools that run here.
+# The three dot-entries this repository actually tracks are re-included below.
+.*
+!.github/
+!.gitattributes
+!.gitignore
+
+# This machine's own agent and client names: the denylist must not publish what it protects.
+scripts/gate-patterns.local.json
