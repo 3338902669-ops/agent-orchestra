@@ -103,6 +103,13 @@ export const DEFAULT_RIGOR = 'L2';
  * borrow E1's voice.
  */
 export const EVIDENCE_GRADES = ['E1', 'E2', 'E3', 'E4'];
+
+/**
+ * The per-level floor. L1 is local and reversible, so any grade will do; L2 needs something a second
+ * party can re-run or re-check; L3 needs E1. It lives at module scope because the dispatch packet
+ * states it to the worker, not only because completeStage enforces it.
+ */
+export const EVIDENCE_FLOOR = { L1: ['E1', 'E2', 'E3', 'E4'], L2: ['E1', 'E2'], L3: ['E1'] };
 export const E1_REQUIRED_FIELDS = ['command', 'exitCode', 'revision'];
 
 /**
@@ -127,6 +134,12 @@ export function normalizeEvidence(agent, ev) {
     if (missing.length) {
       throw new Error(`E1 evidence must carry ${missing.join(', ')} - a reproducible result needs the command, its exit code and the revision it applies to`);
     }
+    // Present is not the same as usable: Number('abc') is NaN, which survives an == null test,
+    // serialises to null, and turns "the command exited 0" into a claim carrying no exit code at
+    // all. A run that was killed records its signal-derived code, not NaN.
+    if (!Number.isInteger(ev.exitCode)) {
+      throw new Error(`E1 evidence needs an integer exit code, got ${JSON.stringify(ev.exitCode)}`);
+    }
   }
   // The other grades are constrained too. Enforcing only E1 left the same hole one rung down: a
   // self-check could label itself E2 ("a peer re-ran it") and nothing asked who the peer was.
@@ -137,7 +150,10 @@ export function normalizeEvidence(agent, ev) {
   if (grade === 'E4') {
     if (!ev.plan && !ev.target) throw new Error('E4 evidence must say what is planned (plan or target)');
   }
-  return { ...record, ...ev, grade };
+  // record LAST: 'at' and 'agent' are the engine's account of who recorded this and when. Spreading
+  // the caller's object over them let a caller rewrite its own authorship and timestamp, which is
+  // precisely the field the independence rules read.
+  return { ...ev, ...record, grade };
 }
 
 /** Default workspace label. Relative on purpose: no machine path is baked in. */
@@ -200,9 +216,14 @@ export function selectAgent(role, { roster = DEFAULT_ROSTER, exclude = [], capab
  */
 export function ownerFor(role, { roster = DEFAULT_ROSTER, type = null, capability = null, exclude = [] } = {}) {
   const named = namedOwner(role, roster, type);
+  // An explicit route is a declaration of competence, so it is honoured as given.
   if (named && !exclude.includes(named)) return named;
   const pick = selectAgent(role, { roster, exclude, capability });
-  return pick ? pick.id : null;
+  // Without a route, competence has to be positive. A roster that scores nobody for this role used
+  // to be handed the work anyway, purely for being the only roster present - the same fail-open that
+  // selectVerifier had already been cured of.
+  if (!pick || !(pick.score > 0)) return null;
+  return pick.id;
 }
 
 // Dry-run command templates. These are PLACEHOLDERS: swap `agent-run` for your own
@@ -379,10 +400,38 @@ function agentCommand(task) {
     'Headless workers: before editing, state the allowed write paths; run the stated verification commands; write the machine-readable JSON result; and report changed files, commands, exit codes, evidence, and unresolved items.',
   ].join(' ');
   const template =
-    COMMAND_TEMPLATES[task.assignedAgent] ?? ((prompt) => DEFAULT_COMMAND_TEMPLATE(prompt, task.assignedAgent));
+    // Object.hasOwn, not a bare lookup: an agent named 'constructor' or 'toString' resolved to a
+    // prototype member and dispatch died with "argv.map is not a function".
+    (Object.hasOwn(COMMAND_TEMPLATES, task.assignedAgent)
+      ? COMMAND_TEMPLATES[task.assignedAgent]
+      : (prompt) => DEFAULT_COMMAND_TEMPLATE(prompt, task.assignedAgent));
   if (!template) return null;
   const argv = template(prompt);
-  return { argv, command: renderCommand(argv) };
+  // A worker handed only the argv array cannot know what to build or how it will be checked, so it
+  // has to guess or ask. The packet is the versioned contract: the host adds the queue location.
+  return {
+    argv,
+    command: renderCommand(argv),
+    packet: {
+      version: 1,
+      task: task.id,
+      title: task.title,
+      type: task.type,
+      phase: task.phase,
+      rigor: task.rigor,
+      important: Boolean(task.important),
+      capability: task.capability ?? null,
+      workspace: task.workspace,
+      owner: task.assignedAgent,
+      resources: task.resources ?? [],
+      spec: task.spec ?? null,
+      acceptance: task.acceptance ?? null,
+      nonGoals: task.nonGoals ?? null,
+      startChoices: task.startChoices ?? null,
+      externalAction: task.externalAction ?? null,
+      evidenceFloor: (EVIDENCE_FLOOR[task.rigor] ?? []).slice(),
+    },
+  };
 }
 
 /** A fresh, empty orchestrator state. */
@@ -478,8 +527,12 @@ export function createTask(state, input) {
   }
   const stated = Boolean(executionMode && security && independentVerify);
   // Resources: the unit of single-writer ownership. A task lock keeps one owner per TASK; this is
-  // what keeps one writer per RESOURCE, which is what the doctrine actually promises. Entries are
-  // free-form (paths, tables, queues) compared case-insensitively.
+  // what keeps one writer per RESOURCE, which is what the doctrine actually promises.
+  //
+  // The identity of a resource is the identity of the lock, so it is normalised rather than compared
+  // as text: './src/a.ts' and 'src/a.ts' are one file, 'src\\a.ts' is the same file again, and
+  // 'src/a.ts' in two different workspaces is two different files. A directory covers what is beneath
+  // it. 'logical:' names (a queue, a table, a service) keep their literal comparison.
   // Critical work (L3) runs a domain review before its evidence is accepted. The domain label is
   // free-form (security, legal, compliance, architecture, ux...) and is recorded with the review.
   const requiresDomainReview = input.domainReview === true || REQUIRES_DOMAIN_REVIEW(rigor);
@@ -542,6 +595,49 @@ export function createTask(state, input) {
 }
 
 /** Take the single-writer lock. Only the assigned agent may claim; a held lock wins. */
+/**
+ * A resource is compared by IDENTITY, not spelling. Raw string comparison let './src/a.ts' and
+ * 'src/a.ts' hold the same file at once, while two workspaces naming 'src/a.ts' were wrongly treated
+ * as competing for one file - the same defect pointing in both directions.
+ */
+export function normalizeResource(raw, workspace = DEFAULT_WORKSPACE) {
+  const fold = (s) => {
+    const t = String(s).replace(/\/+$/, '');
+    return process.platform === 'win32' ? t.toLowerCase() : t;
+  };
+  const text = String(raw).trim();
+  const explicit = text.match(/^(file|dir|directory|logical)\s*:\s*(.*)$/i);
+  const hint = explicit ? explicit[1].toLowerCase() : null;
+  const body = (explicit ? explicit[2] : text).trim();
+  const pathLike =
+    hint === 'file' || hint === 'dir' || hint === 'directory' ||
+    /[\\/]/.test(body) ||
+    /\.[A-Za-z0-9]{1,8}$/.test(body);
+  if (!pathLike) return { kind: 'logical', key: fold(body) };
+  const kind = hint === 'dir' || hint === 'directory' ? 'dir' : 'file';
+  const unified = body.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+  const absolute = /^([A-Za-z]:)?\//.test(unified);
+  const parts = [];
+  for (const seg of unified.split('/')) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') { parts.pop(); continue; }
+    parts.push(seg);
+  }
+  const base = absolute ? '' : fold(String(workspace).replace(/\\/g, '/').replace(/\/{2,}/g, '/'));
+  return { kind, key: (base ? base + '/' : '') + fold(parts.join('/')) };
+}
+
+/** Equal keys conflict; a directory also conflicts with anything beneath it. */
+export function resourcesConflict(a, b) {
+  if (a.kind === 'logical' || b.kind === 'logical') {
+    return a.kind === b.kind && a.key === b.key;
+  }
+  if (a.key === b.key) return true;
+  if (a.kind === 'dir' && b.key.startsWith(a.key + '/')) return true;
+  if (b.kind === 'dir' && a.key.startsWith(b.key + '/')) return true;
+  return false;
+}
+
 export function claimTask(state, id, agent) {
   const next = copy(state);
   const task = requireTask(next, id);
@@ -552,19 +648,24 @@ export function claimTask(state, id, agent) {
   if (task.assignedAgent !== agent) {
     throw new Error(`Task ${id} is assigned to ${task.assignedAgent}, not ${agent}`);
   }
+  // Claiming the external step is reaching for it: the approval gate applies here too, or a host that
+  // never dispatches could start (and finish) an unapproved external action.
+  requireExternalApproval(task);
   // A resource held by another live task cannot be claimed, no matter who is asking.
   if (task.resources?.length) {
+    const mine = task.resources.map((r) => normalizeResource(r, task.workspace));
     const conflicts = Object.values(next.tasks).filter((other) => {
       if (other.id === task.id) return false;
       if (!other.lock) return false;
       if (other.status === 'done' || other.status === 'blocked') return false;
-      return (other.resources ?? []).some((r) =>
-        task.resources.some((mine) => mine.toLowerCase() === String(r).toLowerCase()));
+      return (other.resources ?? [])
+        .map((r) => normalizeResource(r, other.workspace))
+        .some((theirs) => mine.some((m) => resourcesConflict(m, theirs)));
     });
     if (conflicts.length) {
       const held = conflicts
-        .flatMap((other) => (other.resources ?? []).filter((r) =>
-          task.resources.some((mine) => mine.toLowerCase() === String(r).toLowerCase()))
+        .flatMap((other) => (other.resources ?? [])
+          .filter((r) => mine.some((m) => resourcesConflict(m, normalizeResource(r, other.workspace))))
           .map((r) => r + ' (task ' + other.id + ', held by ' + other.lock.owner + ')'));
       throw new Error(`Task ${id} cannot claim: resource already held by ${held.join('; ')}`);
     }
@@ -585,6 +686,8 @@ export function completeStage(state, id, agent, result = {}) {
   const task = requireTask(next, id);
   if (task.status === 'blocked') throw new Error(`Task ${id} is blocked and cannot complete a stage`);
   requireOwner(task, agent);
+  // Completing the external step is performing it. Same gate as claim and dispatch.
+  requireExternalApproval(task);
   task.verification ??= emptyVerification();
   // A verifier's pass record is a WITNESS, not task evidence. Mixing the two made the verifier an
   // evidence author, which then broke the L3 rule that the verifier must have produced none of it -
@@ -623,7 +726,7 @@ export function completeStage(state, id, agent, result = {}) {
   // carrying a single E3 self-report reached done - the standard promised an E1/E2 floor and the
   // runtime did not implement it. A specification the code does not enforce is the exact failure
   // this project exists to remove, so the floor is a table rather than a sentence.
-  const EVIDENCE_FLOOR = { L1: ['E1', 'E2', 'E3', 'E4'], L2: ['E1', 'E2'], L3: ['E1'] };
+  // (EVIDENCE_FLOOR is declared at module scope so the dispatch packet can state it.)
   if (task.phase === 'evidence' && task.evidence.length === 0) {
     throw new Error(
       `Task ${id} is ${task.rigor}: reaching done requires at least one graded evidence record ` +
@@ -661,7 +764,16 @@ export function completeStage(state, id, agent, result = {}) {
     // At this point the verify completion has not been written yet, so the verifier IS the agent
     // completing the stage - falling back to `agent` is what keeps the reviewer a third party.
     ? selectDomainReviewer(roster, {
-        exclude: [implementAgent, task.verification.by ?? agent].filter(Boolean),
+        // Excluding only the CURRENT verifier was not enough: after a failed domain review and a
+        // rework, task.verification.by can still hold the previous pass's verifier, so the review
+        // could be handed to whoever completed that verification - and then refused by the
+        // independence check, stalling a normal flow. Every identity that must not review is named.
+        exclude: [...new Set([
+          implementAgent,
+          task.verification.by,
+          agent,
+          task.domainReview?.by,
+        ].filter(Boolean))],
       })
     : null;
   const transitions = {
@@ -877,6 +989,37 @@ export function approveExternalAction(state, id, approval) {
   return { state: next, task: copy(task) };
 }
 
+/**
+ * The approval gate, in one place. It was enforced only in nextDispatch, so a host that advanced a
+ * task without dispatching it - claim and complete are public API - could carry an unapproved
+ * external action all the way to done. The gate belongs to the STEP, not to one of the three ways
+ * of reaching it.
+ */
+export function requireExternalApproval(task) {
+  if (!task.externalAction) return;
+  const at = task.externalAction.at ?? 'implement';
+  if (task.phase !== at) return;
+  const normalise = (v) => String(v ?? '').trim().toLowerCase();
+  if (!task.externalAction.approved) {
+    throw new Error(
+      `Task ${task.id} reaches its external action (${task.externalAction.kind}) in the ${at} stage and ` +
+        'it is not approved. Internal stages may continue; record one with: ' +
+        `approve --task ${task.id} --by <who> --scope <target>`,
+    );
+  }
+  // The scope is a constraint, not a note, and it is matched STRUCTURALLY: the approval has to name
+  // the action's target (or its kind) exactly. A substring test let "not production" unlock
+  // production, which is the classic way an authorization check becomes decoration.
+  const scope = normalise(task.externalAction.scope);
+  const required = normalise(task.externalAction.target ?? task.externalAction.kind);
+  if (!scope || !required || scope !== required) {
+    throw new Error(
+      `Task ${task.id}: the approval scope must equal the action's target exactly. Got "${task.externalAction.scope}", ` +
+        `the action targets "${task.externalAction.target ?? task.externalAction.kind}".`,
+    );
+  }
+}
+
 /** null when the task has no external action, otherwise whether it is approved. */
 export function canRunExternalAction(state, id) {
   const task = requireTask(state, id);
@@ -903,33 +1046,10 @@ export function nextDispatch(state, id) {
       `Task ${id} is gated: verification failed and no override is recorded, so it cannot be dispatched to evidence`,
     );
   }
-  // The approval gate has to gate the thing it names, and ONLY that thing. Blocking every dispatch of
-  // a task that carries an external action would stop specify/implement/verify too, which is not what
-  // the protocol says: internal work may proceed, the external STEP needs approval. The step is
-  // declared once (externalAction.at, default "implement").
-  const externalAt = task.externalAction?.at ?? 'implement';
-  const atExternalStep = task.externalAction && task.phase === externalAt;
-  if (atExternalStep && !task.externalAction.approved) {
-    throw new Error(
-      `Task ${id} reaches its external action (${task.externalAction.kind}) in the ${externalAt} stage and ` +
-        `it is not approved. Internal stages may continue; record one with: ` +
-        `approve --task ${id} --by <who> --scope <target>`,
-    );
-  }
-  // The scope is a constraint, not a note, and it is matched STRUCTURALLY: the approval has to name
-  // the action's target (or its kind) exactly. A substring test let "not production" unlock
-  // production, which is the classic way an authorization check becomes decoration.
-  if (atExternalStep && task.externalAction.approved) {
-    const normalise = (v) => String(v ?? '').trim().toLowerCase();
-    const scope = normalise(task.externalAction.scope);
-    const required = normalise(task.externalAction.target ?? task.externalAction.kind);
-    if (!scope || !required || scope !== required) {
-      throw new Error(
-        `Task ${id}: the approval scope must equal the action's target exactly. Got "${task.externalAction.scope}", ` +
-          `the action targets "${task.externalAction.target ?? task.externalAction.kind}".`,
-      );
-    }
-  }
+  // The gate has to gate the thing it names, and ONLY that thing: internal work may proceed, the
+  // external STEP needs approval (externalAction.at, default "implement"). One implementation, shared
+  // with claim and complete - enforcing it only here left the other two paths open.
+  requireExternalApproval(task);
   const rendered = agentCommand(task);
   if (!rendered) throw new Error(`Task ${id} has no dispatch command for agent ${task.assignedAgent}`);
   return {
@@ -942,6 +1062,9 @@ export function nextDispatch(state, id) {
     // rendered for display with POSIX single-quote escaping.
     command: rendered.command,
     argv: rendered.argv,
+    // The packet travels with the dispatch record: a worker that receives only an argv array has to
+    // guess what to build and how it will be checked, which is not a contract.
+    packet: rendered.packet,
     requiresHumanCoordination: false,
     requiresCoordinatorCoordination:
       task.assignedAgent === ownerFor('specify', { roster: state.roster ?? DEFAULT_ROSTER, capability: task.capability }),

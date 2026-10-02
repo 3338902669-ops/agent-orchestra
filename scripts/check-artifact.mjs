@@ -35,14 +35,26 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DENYLIST = fileURLToPath(new URL('../artifact-denylist.json', import.meta.url));
 const BINARY = /\.(png|jpg|jpeg|gif|webp|ico|zip|woff2?)$/i;
 
-function forbiddenPatterns() {
-  if (!existsSync(DENYLIST)) {
-    // Fail closed. A missing denylist must never read as "nothing forbidden found".
-    throw new Error(
-      'artifact-denylist.json not found next to the repository (' + DENYLIST + '); the address check cannot run',
-    );
+export function forbiddenPatterns() {
+  if (existsSync(DENYLIST)) {
+    return JSON.parse(readFileSync(DENYLIST, 'utf8')).forbidden || [];
   }
-  return JSON.parse(readFileSync(DENYLIST, 'utf8')).forbidden || [];
+  // The denylist is deliberately not shipped, so an unpacked package cannot carry it. Where a
+  // checkout or CI has a git remote, the patterns are derived from it and the check still runs. With
+  // neither, this returns null and the caller must SAY SO: a missing list must never read as
+  // "nothing forbidden found".
+  try {
+    const remote = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    const match = remote.match(/github\.com[:/]([^/]+)\/([^/.]+)/i);
+    if (match) return [match[1], match[1] + '.github.io', 'github.com/' + match[1]];
+  } catch {
+    // no git, no remote - fall through to the skip path
+  }
+  return null;
 }
 
 export function readEntries(zip) {
@@ -78,6 +90,10 @@ export function checkArtifact(zipPath) {
   const entries = readEntries(readFileSync(zipPath));
   const problems = [];
   const forbidden = forbiddenPatterns();
+  if (!forbidden) {
+    // Distinguished from an empty list on purpose: "I could not check" is not "I checked".
+    throw new Error('the address check cannot run: no artifact-denylist.json and no git remote to derive it from');
+  }
   for (const entry of entries) {
     const base = entry.name.split('/').pop() || entry.name;
     // The address scan applies to EVERY entry: the entry NAME (it travels in the listing of the
@@ -177,6 +193,13 @@ if (isMain && process.argv.includes('--self-test')) {
   process.exit(bad === 0 ? 0 : 1);
 }
 if (isMain) {
+  // --allow-skip exists for the packaged copy: it ships without the denylist on purpose, and a
+  // package whose own gate cannot run at all is worse than one that reports what it skipped.
+  if (!forbiddenPatterns() && process.argv.includes('--allow-skip')) {
+    console.log('artifact check SKIPPED: no denylist with this package and no git remote here');
+    console.log('(the release pipeline runs this check with the denylist or a git remote present)');
+    process.exit(0);
+  }
   const flag = process.argv.indexOf('--zip');
   let zipPath = flag >= 0 ? process.argv[flag + 1] : null;
   let cleanup = null;

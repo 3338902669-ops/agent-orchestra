@@ -176,11 +176,21 @@ function runCommand(args) {
     const maxAttemptsRaw = value(args, '--max-attempts', false);
     // Fail closed: a non-empty queue is only reset on an explicit --force, and the
     // previous contents are always backed up with a timestamp first.
+    //
+    // The ceiling used to be written onto the state being replaced and then discarded when
+    // createState built the fresh one, so 'init --max-attempts 7' reported success and left 3.
+    let maxAttempts;
     if (maxAttemptsRaw !== undefined && maxAttemptsRaw !== null && maxAttemptsRaw !== false) {
       const n = Number(maxAttemptsRaw);
       if (!Number.isInteger(n) || n < 1) throw new Error('--max-attempts must be a positive integer');
-      state.policy = { ...(state.policy ?? {}), maxVerificationAttempts: n };
+      maxAttempts = n;
     }
+    const withPolicy = (fresh) => {
+      if (maxAttempts !== undefined) {
+        fresh.policy = { ...(fresh.policy ?? {}), maxVerificationAttempts: maxAttempts };
+      }
+      return fresh;
+    };
     const taskCount = Object.keys(state.tasks ?? {}).length;
     if (taskCount > 0 && !args.includes('--force')) {
       throw new Error(
@@ -192,7 +202,7 @@ function runCommand(args) {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backup = backupTarget(stamp);
       writeFileSync(backup, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-      const fresh = createState(roster);
+      const fresh = withPolicy(createState(roster));
       commit(fresh, rev);
       return print({
         ok: true,
@@ -202,9 +212,14 @@ function runCommand(args) {
         agents: Object.keys(fresh.roster.agents),
       });
     }
-    const fresh = createState(roster);
+    const fresh = withPolicy(createState(roster));
     commit(fresh, rev);
-    return print({ ok: true, state: stateLabel(), agents: Object.keys(fresh.roster.agents) });
+    return print({
+      ok: true,
+      state: stateLabel(),
+      agents: Object.keys(fresh.roster.agents),
+      maxVerificationAttempts: fresh.policy.maxVerificationAttempts,
+    });
   }
   if (command === 'status') return print(state);
   if (command === 'create') {
@@ -247,6 +262,12 @@ function runCommand(args) {
     const grade = value(args, '--evidence-grade', false);
     const text = value(args, '--evidence', false);
     const exitCodeRaw = value(args, '--evidence-exit-code', false);
+    if (exitCodeRaw !== undefined && exitCodeRaw !== null && !/^-?\d+$/.test(String(exitCodeRaw).trim())) {
+      throw new Error('--evidence-exit-code must be an integer (a signal-terminated run records its code, not "killed")');
+    }
+    // E2 needs the peer that re-ran it, E4 needs what is planned: the library demanded both while
+    // the CLI offered no way to supply them, so those two grades were unusable from the command
+    // line - a documented capability the entry point could not reach.
     const evidence = grade
       ? {
           grade,
@@ -254,6 +275,9 @@ function runCommand(args) {
           command: value(args, '--evidence-command', false) ?? undefined,
           revision: value(args, '--evidence-revision', false) ?? undefined,
           exitCode: exitCodeRaw === undefined || exitCodeRaw === null ? undefined : Number(exitCodeRaw),
+          checkedBy: value(args, '--evidence-checked-by', false) ?? undefined,
+          plan: value(args, '--evidence-plan', false) ?? undefined,
+          target: value(args, '--evidence-target', false) ?? undefined,
         }
       : text;
     const result = completeStage(state, id, value(args, '--agent'), {
@@ -299,7 +323,12 @@ function runCommand(args) {
   }
   // Dry run only: nextDispatch never spawns anything, and it throws for tasks that
   // must not be dispatched, which turns into a non-zero exit code below.
-  if (command === 'dispatch') return print(nextDispatch(state, id));
+  if (command === 'dispatch') {
+    // The packet names the queue it came from: a worker that receives a task without knowing where
+    // the record lives cannot report back into it.
+    const dispatch = nextDispatch(state, id);
+    return print({ ...dispatch, packet: { ...dispatch.packet, queue: stateLabel() } });
+  }
   throw new Error('Commands: init, status, create, claim, complete, recover, approve, fail, override, dispatch');
 }
 

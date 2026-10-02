@@ -39,6 +39,9 @@ import {
   overrideVerificationGate,
   recoverTask,
   selectAgent,
+  normalizeEvidence,
+  normalizeResource,
+  resourcesConflict,
   selectVerifier,
   shellQuote,
   validateRoster,
@@ -547,7 +550,9 @@ for (const file of RUNTIME_SOURCES) {
     assert.ok(!src.includes('child_process'), 'child_process imported in ' + file);
     assert.ok(!/\bspawnSync?\s*\(/.test(src), 'spawn call found in ' + file);
     assert.ok(!/\bexecFile\s*\(/.test(src), 'execFile call found in ' + file);
-    assert.ok(!/\bexec\s*\(/.test(src), 'exec call found in ' + file);
+    // A bare exec( is the process form; RegExp.prototype.exec() is not, and flagging it made this
+    // guard cry wolf on ordinary parsing code.
+    assert.ok(!/(?<![.\w])exec\s*\(/.test(src), 'exec call found in ' + file);
   });
 }
 
@@ -1209,4 +1214,97 @@ test('a route named after a prototype member is ignored, not resolved', () => {
   const created = createTask(state, { title: 'prototype route' });
   const owner = created.task.assignedAgent;
   assert.equal(owner, 'real', 'a prototype member must not become an agent');
+});
+
+// ── the defects an independent review reproduced (2026-10-02) ────────────────
+
+const claimBoth = (a, b, workspaceB) => {
+  // Chained, not parallel: both tasks have to live in ONE state for a lock to mean anything.
+  const one = createTask(createState(), { title: 'one', resources: [a] });
+  const two = createTask(one.state, { title: 'two', resources: [b], ...(workspaceB ? { workspace: workspaceB } : {}) });
+  const held = claimTask(two.state, one.task.id, one.task.assignedAgent).state;
+  return { held, two };
+};
+
+test('resource identity: ./src/a.ts and src/a.ts are the same file', () => {
+  // Raw string comparison let both hold the same file at once.
+  const { held, two } = claimBoth('src/a.ts', './src/a.ts');
+  assert.throws(() => claimTask(held, two.task.id, two.task.assignedAgent), /already held by/);
+});
+
+test('resource identity: a backslash spelling is the same file', () => {
+  const { held, two } = claimBoth('src/a.ts', 'src\\a.ts');
+  assert.throws(() => claimTask(held, two.task.id, two.task.assignedAgent), /already held by/);
+});
+
+test('resource identity: the same relative path in two workspaces is two files', () => {
+  // The opposite error: two projects naming 'src/a.ts' were treated as competing.
+  const { held, two } = claimBoth('src/a.ts', 'src/a.ts', 'wsB');
+  assert.doesNotThrow(() => claimTask(held, two.task.id, two.task.assignedAgent));
+});
+
+test('resource identity: a directory covers the files beneath it', () => {
+  const { held, two } = claimBoth('dir:src', 'src/deep/a.ts');
+  assert.throws(() => claimTask(held, two.task.id, two.task.assignedAgent), /already held by/);
+});
+
+test('routing: an implicit route needs a positive score, so an all-zero roster is refused', () => {
+  const roster = {
+    agents: { solo: { cost: 1, scores: { specify: 0, implement: 0, verify: 0, evidence: 0, triage: 0, environment: 0, domain: 0 } } },
+    routes: {},
+  };
+  assert.equal(ownerFor('specify', { roster }), null);
+  assert.throws(() => createTask(createState(roster), { title: 'nobody' }), /No agent in the roster can own/);
+});
+
+test('routing: an explicit route is a declaration and is honoured at score 0', () => {
+  // The boundary, stated rather than implied: naming an agent for a role is the roster author
+  // vouching for it, and the engine does not second-guess the declaration.
+  const roster = {
+    agents: { solo: { cost: 1, scores: { specify: 0, implement: 0, verify: 0, evidence: 0, triage: 0, environment: 0, domain: 0 } } },
+    routes: { specify: 'solo' },
+  };
+  assert.equal(ownerFor('specify', { roster }), 'solo');
+});
+
+test('an unapproved external action cannot be claimed at its external step', () => {
+  const created = createOne({ title: 'deploy', externalAction: 'deploy', externalTarget: 'production' });
+  const id = created.task.id;
+  let state = step(created.state, id, created.task.assignedAgent);
+  const implementer = state.tasks[id].assignedAgent;
+  assert.equal(implementer, implementerForType('build', state.roster));
+  // No dispatch happened, so nothing approved the step.
+  assert.throws(() => claimTask(state, id, implementer), /not approved/);
+});
+
+test('an E1 exit code must be an integer, because NaN serialises to null', () => {
+  const created = createOne({ title: 'nan' });
+  const state = step(created.state, created.task.id, created.task.assignedAgent);
+  const agent = state.tasks[created.task.id].assignedAgent;
+  const claimed = claimTask(state, created.task.id, agent).state;
+  assert.throws(
+    () => completeStage(claimed, created.task.id, agent, {
+      evidence: { grade: 'E1', text: 'ran it', command: 'npm test', exitCode: Number('abc'), revision: 'r1' },
+    }),
+    /integer exit code/,
+  );
+});
+
+test('evidence provenance is the engine record, not the callers', () => {
+  const record = normalizeEvidence('agent-a', { grade: 'E3', text: 'x', agent: 'attacker', at: '1999-01-01' });
+  assert.equal(record.agent, 'agent-a');
+  assert.notEqual(record.at, '1999-01-01');
+});
+
+test('the dispatch record carries the packet a worker needs, not only an argv array', () => {
+  const created = createOne({ title: 'packet', resources: ['src/x.ts'] });
+  const id = created.task.id;
+  const walked = step(created.state, id, created.task.assignedAgent);
+  const dispatch = nextDispatch(walked, id);
+  assert.ok(Array.isArray(dispatch.argv));
+  assert.equal(dispatch.packet.version, 1);
+  assert.equal(dispatch.packet.spec, 'the change under test');
+  assert.equal(dispatch.packet.acceptance, 'the suite exits 0');
+  assert.deepEqual(dispatch.packet.resources, ['src/x.ts']);
+  assert.ok(Array.isArray(dispatch.packet.evidenceFloor));
 });

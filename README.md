@@ -39,7 +39,7 @@ methodology and its limits are in [`bench/README.md`](bench/README.md).
 ### Conformance, audited
 
 [**CONFORMANCE.md**](CONFORMANCE.md) maps every MUST in the protocol to the code that enforces it and
-the test that pins it: **40 requirements, 37 ENFORCED, 1 DOCUMENTED ONLY, 2 OUT OF SCOPE**. The table is
+the test that pins it: **41 requirements, 38 ENFORCED, 1 DOCUMENTED ONLY, 2 OUT OF SCOPE**. The table is
 machine-checked - a reference that does not resolve, or an ENFORCED row without a test, fails the gate.
 
 ### The normative part
@@ -52,7 +52,7 @@ storage and prove conformance with the same benchmark.
 
 ### What this costs you
 
-Zero dependencies, Node 18+.** 87 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation cases (a corpus driven by 8 acceptance checks), and one gate command (`node scripts/gate.mjs`) that CI and your machine both run - it injects
+Zero dependencies, Node 18+.** 99 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation cases (a corpus driven by 8 acceptance checks), and one gate command (`node scripts/gate.mjs`) that CI and your machine both run - it injects
 ten known faults and must reject every one of them before it reports PASS.
 
 中文对照：`references/zh-contrast.md`

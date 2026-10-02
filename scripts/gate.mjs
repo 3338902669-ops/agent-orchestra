@@ -178,7 +178,7 @@ step('benchmark', 'the protocol still stops every failure mode the README claims
 }, 'exit 0: every failure mode is stopped by the engine');
 
 step('artifact', 'the PUBLISHED zip is LF-clean, executable, and free of the repository address', () =>
-  node(['scripts/check-artifact.mjs', '--self-test']),
+  node(['scripts/check-artifact.mjs', '--self-test', '--allow-skip']),
   'exit 0: the real artifact passes, and an artifact with the address pasted in is refused');
 
 step('conformance', 'every MUST maps to enforcement and a test, and the table cannot drift', () =>
