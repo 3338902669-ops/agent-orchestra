@@ -5,6 +5,12 @@ on:
     branches: [ main ]
   pull_request:
 
+# Least privilege, stated rather than inherited. CodeQL flagged the absence on its first run
+# (actions/missing-workflow-permissions): without this block the job's GITHUB_TOKEN carries whatever the
+# repository default happens to be, which is a permission nobody chose.
+permissions:
+  contents: read
+
 jobs:
   validate:
     # Pinned, not latest: GitHub has announced that ubuntu-latest migrates to Ubuntu 26 on 2026-10-19,
