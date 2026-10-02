@@ -947,6 +947,19 @@ export function overrideVerificationGate(state, id, override = {}) {
     at: now(),
   };
   task.verification.blocked = false;
+  // An override is the decision to proceed with the failure accepted, so it advances the task to the
+  // evidence stage. Leaving it in the rework loop meant the only way forward was a second PASS -
+  // exactly the PASS the override exists to waive. A task blocked by the retry ceiling is NOT moved:
+  // that is what recover is for, and conflating the two would let an override erase three failures.
+  if (task.status !== 'blocked') {
+    task.phase = 'evidence';
+    task.assignedAgent = ownerFor('evidence', {
+      roster: next.roster ?? DEFAULT_ROSTER,
+      type: task.type,
+      capability: task.capability,
+    });
+    task.lock = null;
+  }
   task.updatedAt = now();
   event(next, id, 'verification_gate_overridden', {
     approvedBy: override.approvedBy,

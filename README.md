@@ -52,7 +52,7 @@ storage and prove conformance with the same benchmark.
 
 ### What this costs you
 
-Zero dependencies, Node 18+.** 99 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation cases (a corpus driven by 8 acceptance checks), and one gate command (`node scripts/gate.mjs`) that CI and your machine both run - it injects
+Zero dependencies, Node 18+.** 102 engine tests, 8 acceptance tests, 8 handoff tests, 83 activation cases (a corpus driven by 8 acceptance checks), and one gate command (`node scripts/gate.mjs`) that CI and your machine both run - it injects
 ten known faults and must reject every one of them before it reports PASS.
 
 中文对照：`references/zh-contrast.md`

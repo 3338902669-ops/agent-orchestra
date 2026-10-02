@@ -24,6 +24,20 @@ jobs:
         run: |
           bash -n scripts/install.sh
           echo "install.sh parses"
+      # Parsing is not installing. The Windows installer failed on a target that did not exist yet and
+      # installed only part of the skill; this runs the shell one for real, where bash exists.
+      - name: The shell installer actually installs
+        run: |
+          bash scripts/install.sh -t /tmp/ao-install
+          test -f /tmp/ao-install/scripts/check-handoff.mjs
+          node /tmp/ao-install/scripts/check-handoff.mjs --dir /tmp/ao-install/examples/handoff
+          echo "install.sh installed a working skill"
+      - name: The light mode installs the prompt skill only
+        run: |
+          bash scripts/install.sh -t /tmp/ao-install-light -m light
+          test -f /tmp/ao-install-light/SKILL.md
+          test ! -e /tmp/ao-install-light/scripts
+          echo "light mode is prompt-only, as documented"
       - name: Run the gate
         run: node scripts/gate.mjs --evidence evidence
       - name: Show the evidence record

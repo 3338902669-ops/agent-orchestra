@@ -1308,3 +1308,69 @@ test('the dispatch record carries the packet a worker needs, not only an argv ar
   assert.deepEqual(dispatch.packet.resources, ['src/x.ts']);
   assert.ok(Array.isArray(dispatch.packet.evidenceFloor));
 });
+
+// ── the second review round (2026-10-02): handoff vocabulary and override ────
+
+test('handoff: an English negated precedence claim is refused', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ao-hop-'));
+  for (const f of ['HANDOFF-RULES.md', 'MEMORY-SNAPSHOT.md', 'AGENT-ROLES.md']) {
+    writeFileSync(join(dir, f), 'placeholder\n');
+  }
+  writeFileSync(join(dir, 'CURRENT-TASK.md'), [
+    'Status: in-progress', 'Owner: a', 'Current step: x', 'Next step: y', 'Evidence: z',
+    '', 'The record never outranks the queue.', '',
+  ].join('\n'));
+  const { checkHandoff } = await import('./../check-handoff.mjs');
+  const result = checkHandoff(dir);
+  assert.equal(result.ok, false, 'a negation must not satisfy the requirement it negates');
+  assert.ok(result.problems.some((p) => /outranks the queue/.test(p)));
+});
+
+test('handoff: the template in references/handoff.md passes the checker', async () => {
+  // The documentation and the checker disagreeing was a trap: following the reference record
+  // produced a rejected record.
+  const doc = readFileSync(new URL('../../references/handoff.md', import.meta.url), 'utf8');
+  const block = [...doc.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map((m) => m[1]).find((b) => /^status:/m.test(b));
+  assert.ok(block, 'the reference record template was not found in references/handoff.md');
+  const dir = mkdtempSync(join(tmpdir(), 'ao-hop-'));
+  for (const f of ['HANDOFF-RULES.md', 'MEMORY-SNAPSHOT.md', 'AGENT-ROLES.md']) {
+    writeFileSync(join(dir, f), 'placeholder\n');
+  }
+  // The block is a SCHEMA: its values are alternatives ('in-progress | handoff-wait | ...'), so it is
+  // the FIELD VOCABULARY that has to be accepted, not the block verbatim.
+  const keys = block.split('\n').map((l) => (l.match(/^([a-z]+):/) || [])[1]).filter(Boolean);
+  for (const key of ['status', 'owner', 'current', 'next', 'evidence']) {
+    assert.ok(keys.includes(key), 'the documented field names no longer include: ' + key);
+  }
+  writeFileSync(join(dir, 'CURRENT-TASK.md'), [
+    'status: in-progress',
+    'owner: someone',
+    'current: the step in flight',
+    'next: the next owner does X',
+    'evidence: criterion -> command, exit code',
+    'The record outranks the queue.',
+    '',
+  ].join('\n'));
+  const { checkHandoff } = await import('./../check-handoff.mjs');
+  const result = checkHandoff(dir);
+  assert.deepEqual(result.problems, [], 'the documented field vocabulary must satisfy the documented checker');
+});
+
+test('override: accepting a failure lets the task proceed instead of demanding a second PASS', () => {
+  const created = createOne({ title: 'override' });
+  const id = created.task.id;
+  let state = step(created.state, id, created.task.assignedAgent);
+  const implementer = state.tasks[id].assignedAgent;
+  state = step(state, id, implementer);
+  const verifier = state.tasks[id].assignedAgent;
+  state = claimTask(state, id, verifier).state;
+  state = failVerification(state, id, verifier, { findings: 'the change does not hold' }).state;
+  assert.equal(state.tasks[id].verification.blocked, true);
+  const overridden = overrideVerificationGate(state, id, {
+    approvedBy: 'coordinator', scope: 'ship it', reason: 'accepted risk, tracked separately',
+  }).state;
+  const task = overridden.tasks[id];
+  assert.equal(task.verification.blocked, false);
+  assert.equal(task.phase, 'evidence', 'the override is the decision to proceed');
+  assert.equal(task.lock, null);
+});

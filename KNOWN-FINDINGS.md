@@ -1,7 +1,3 @@
-| F-014 | medium | The PowerShell installer neither creates its target directory nor copies `scripts/`, so an isolated install fails on a new path and, once it succeeds, the checks the documentation refers to are absent. | open - a light/full install mode is needed, with a smoke check after install | maintainer | 2026-11-15 |
-| F-015 | low | `check-handoff.mjs` recognises a negated precedence claim only in Chinese; the English sentence "The record never outranks the queue." is accepted. | open - add the English negation forms and a test | maintainer | 2026-11-15 |
-| F-016 | low | `references/handoff.md` shows a template using lowercase fields and `handoff-wait`/`blocked`, while the checker requires its own aliases and the statuses `in-progress`/`waiting`/`done`. Following the template is rejected. | open - generate the template from the checker, or accept both | maintainer | 2026-11-15 |
-| F-017 | low | `override` records the decision but the task still returns to `verify`, so there is no normal path that accepts a failure and proceeds to evidence. | open - either implement the transition or narrow the promise in the protocol | maintainer | 2026-11-15 |
 # Known findings
 
 Every accepted defect lives here with a severity, an owner, a disposition and a review date.

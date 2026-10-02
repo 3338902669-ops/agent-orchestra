@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.5.5] - 2026-10-02
+
+The four findings the previous round registered instead of fixing.
+
+### Fixed
+- **An override now means proceed.** It recorded the decision and left the task in `verify`, so the
+  only way forward was the second PASS the override existed to waive. An override advances the task to
+  the evidence stage - unless the task is blocked by the retry ceiling, which is what `recover` is for.
+- **The handoff checker accepted a negated English precedence claim.** `outranks` matched inside
+  "never outranks"; the Chinese side had a guard from the start and the English side did not. Both
+  spellings are now judged on whether the claim is positive.
+- **The documented handoff template failed the documented checker.** `references/handoff.md` uses
+  lowercase field names and `handoff-wait`, while the checker wanted `Status:`/`Current step:` and
+  `in-progress`/`waiting`/`done`, so following the reference record produced a rejected one. All three
+  spellings are accepted now, and a test reads the template out of the document and requires it to pass.
+- **The installers did not install.** Both failed on a target that did not exist yet and copied three
+  items, so every documented command that calls a script was broken after a successful install. There
+  are now two modes (`full`, `light`), the target directory is created, and `full` finishes with a
+  smoke check that runs the installed checker against the shipped example. CI runs the shell installer
+  for real, because bash is not present on the development machine.
+
+102 engine tests, 8 acceptance, 8 handoff. Gate: 15 steps.
+
 ## [2.5.4] - 2026-10-02
 
 ### Fixed
