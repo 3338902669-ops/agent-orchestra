@@ -74,6 +74,7 @@ One portable, capability-first protocol for multi-agent work along **two axes**:
 | `scripts/detect-trigger.mjs` | Keyword activation detector (exit 0 engaged / 1 not engaged) | keyword activation mode |
 | `scripts/orchestrator/` | Task queue CLI + library + tests (zero dependencies, Node 18+) | you want deterministic dispatch and claim locks |
 | `scripts/install.ps1`, `scripts/install.sh` | One-click installers that copy this single skill into a detected skills directory | first install |
+| `scripts/skill-catalog/` | Optional, standalone: route a task description to the right skill using the skill's own `description`, with no per-skill keyword list to maintain | you have a skill directory and want it findable |
 
 ## Features
 
