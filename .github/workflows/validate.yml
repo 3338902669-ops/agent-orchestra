@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       # Pinned to commit SHAs: a mutable tag lets upstream change the code that runs
-      # with this repository's token. SHAs resolved from the v5 tags on 2026-10-02, which moved the
-      # actions off the deprecated Node 20 runtime.
+      # with this repository's token. SHAs resolved on 2026-10-02 from the majors that run on Node 24
+      # (checkout and setup-node v5, upload-artifact v6 - v5 of that one is still node20).
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -46,7 +46,7 @@ jobs:
       - name: Show the evidence record
         if: always()
         run: cat evidence/latest.json
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: gate-evidence
