@@ -4,3 +4,7 @@ evidence/
 # an agent runtime that works in this directory keeps its session state here
 .rivet/
 .rivet
+
+# verification artefacts written by a dispatched verifier: they carry this machine queue and its
+# client task titles, so they stay out of the repository (and out of the package).
+.verify-*/

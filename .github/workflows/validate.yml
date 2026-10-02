@@ -7,12 +7,15 @@ on:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # Pinned, not latest: GitHub has announced that ubuntu-latest migrates to Ubuntu 26 on 2026-10-19,
+    # and a verification pipeline that silently changes OS underneath itself is not a fixed point.
+    runs-on: ubuntu-24.04
     steps:
       # Pinned to commit SHAs: a mutable tag lets upstream change the code that runs
-      # with this repository's token. SHA resolved from the v4 tag on 2026-10-01.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      # with this repository's token. SHAs resolved from the v5 tags on 2026-10-02, which moved the
+      # actions off the deprecated Node 20 runtime.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '20'
       # One command, one definition of "checked": CI and a local machine run exactly this.
@@ -43,7 +46,7 @@ jobs:
       - name: Show the evidence record
         if: always()
         run: cat evidence/latest.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:
           name: gate-evidence
