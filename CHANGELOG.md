@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [2.5.6] - 2026-10-03
+
+Everything that shipped after 2.5.5, and the release metadata brought back in step with it. A reader
+comparing the README with the newest changelog entry could see 106 engine tests against 102 and 16 gate
+checks against 15; both were checked by hand and neither was checked by the gate.
+
+### Added
+- **The engine landed on a real machine.** A live queue from the earlier generation (14 tasks, real
+  client work, 12 MB of dispatch logs) was migrated from version 3 to version 4 by `migrateState` and
+  `orchestrator migrate --from`. Historical tasks keep their status and gain a `legacy` block; their
+  verification is recorded as `unrecorded`, never `passed`.
+- **Skill catalogue and router** (`scripts/skill-catalog/`): idf-weighted token overlap over name and
+  description, with keywords as a bonus and no per-skill keyword list to maintain. Wired into the gate
+  at 2.5.6, including an end-to-end run of both CLIs over `examples/skill-catalog`.
+- CodeQL default setup, and an explicit `permissions: contents: read` on the workflow - CodeQL's first
+  run reported the missing permission block, which this project's own gate could not have seen.
+
+### Fixed
+- The `claims` step could not see the numbers it exists to check: its pattern required the number to be
+  followed immediately by "tests", so "106 engine tests" was invisible to it, and it never looked at
+  the gate's own counts or at the newest changelog entry. It now checks tests, gate checks, injected
+  faults and conformance counts, in the current-state documents and in the newest changelog entry.
+- The security policy now states that the repository root is also a published website, so every
+  committed file is served the moment it lands, and that scratch or verifier output belongs outside the
+  repository or in `.gitignore`.
+- The hygiene scan now covers what git would commit rather than what the package would ship; a
+  hand-maintained denylist used to publish the client and agent names it existed to protect.
+- An override of a failed verification now advances the task to the evidence stage, which is what
+  "accepted, proceed" means; previously it recorded the decision and still required the PASS it waived.
+
+### Known findings
+- F-018: the skill router refuses a query made only of function words in Chinese but not in English,
+  because its stoplist holds only Chinese function words.
+
+Gate: 16 steps, which inject twelve known faults and must reject every one. 106 engine tests, 8
+acceptance, 8 handoff. 41 conformance requirements, 38 ENFORCED, 1 DOCUMENTED ONLY, 2 OUT OF SCOPE.
+
 ## [2.5.5] - 2026-10-02
 
 The four findings the previous round registered instead of fixing.

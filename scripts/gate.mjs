@@ -283,37 +283,102 @@ step('config-usage', 'no config key pretends to be behaviour the engine does not
 }, 'exit 0: each key is either referenced by the scripts or listed as advisory with a reason');
 
 step('claims', 'numbers stated in the docs match reality', () => {
-  // The config was once the thing that lied; the docs can lie the same way. Only current-state
-  // documents are checked - CHANGELOG entries describe past releases and are historical by nature.
-  const engine = node(['--test', 'scripts/orchestrator/lib.test.mjs']);
-  const acceptance = node(['--test', 'scripts/acceptance.test.mjs']);
+  // The config was once the thing that lied; the docs can lie the same way.
+  //
+  // Two holes, both found by a reader rather than by this step. Its pattern required the number to be
+  // followed immediately by "tests", so "106 engine tests" - the phrasing this repository actually
+  // uses - was invisible to it. And it never looked at the gate's own numbers: "runs thirteen checks"
+  // and "ten known faults" were both stale while this step reported that no stale claim was found.
+  //
+  // A CHANGELOG entry describing a past release is historical and stays unchecked. The NEWEST entry is
+  // the one a reader sees first, so it has to describe the tree they are reading.
   const countOf = (result) => {
     const m = /tests (\d+)/.exec(result.out + result.err);
     return m ? Number(m[1]) : null;
   };
-  const engineCount = countOf(engine);
-  const acceptanceCount = countOf(acceptance);
-  if (engineCount === null || acceptanceCount === null) {
+  const engine = countOf(node(['--test', 'scripts/orchestrator/lib.test.mjs']));
+  const acceptance = countOf(node(['--test', 'scripts/acceptance.test.mjs']));
+  const handoff = countOf(node(['--test', 'scripts/handoff.test.mjs']));
+  if (engine === null || acceptance === null || handoff === null) {
     return { status: 1, durationMs: 0, out: '', err: 'could not read the test counts from the suites' };
   }
-  const docs = ['README.md', 'SKILL.md']
-    .concat(readdirSync(join(ROOT, 'references')).filter((f) => f.endsWith('.md')).map((f) => 'references/' + f));
+  const suites = { engine, acceptance, handoff };
+  const mutations = (readFileSync(join(ROOT, 'scripts/gate.mjs'), 'utf8').match(/\{\s*name: '/g) || []).length;
+  const requirements = JSON.parse(readFileSync(join(ROOT, 'conformance.json'), 'utf8')).requirements;
+  const enforced = requirements.filter((r) => r.status === 'ENFORCED').length;
+  const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };
   const problems = [];
-  for (const rel of docs) {
-    const file = join(ROOT, rel);
-    if (!existsSync(file)) continue;
-    const text = readFileSync(file, 'utf8');
-    for (const m of text.matchAll(/(\d+)\s+(?:unit\s+)?tests\b/g)) {
+
+  const check = (rel, text) => {
+    // (?<![A-Za-z\d]) because 'E1 checks' is not a claim that the gate has one check.
+    for (const m of text.matchAll(/(?<![A-Za-z\d])(\d+)\s+(?:(engine|acceptance|handoff)\s+)?tests\b/g)) {
       const stated = Number(m[1]);
-      if (stated !== engineCount && stated !== engineCount + acceptanceCount && stated !== acceptanceCount) {
-        problems.push(rel + ' states ' + stated + ' tests; the suites hold ' + engineCount + ' engine + ' + acceptanceCount + ' acceptance');
+      const kind = m[2];
+      if (kind) {
+        if (stated !== suites[kind]) problems.push(rel + ' states ' + stated + ' ' + kind + ' tests; the suite holds ' + suites[kind]);
+        continue;
+      }
+      if (stated !== engine && stated !== acceptance && stated !== engine + acceptance) {
+        problems.push(rel + ' states ' + stated + ' tests; the suites hold ' + engine + ' engine + ' + acceptance + ' acceptance');
       }
     }
+    // 'N checks' is unambiguous here: the gate is the only thing in this repository that has checks.
+    // 'N steps' needs the line to be about the gate, so "two steps of the pipeline" is not read as a
+    // claim about the gate's size. (The guard is per line, and the count and the word 'gate' can sit on
+    // different lines - "One command - scripts/gate.mjs - / runs sixteen checks" - so 'checks' is
+    // matched across the whole text rather than line by line.)
+    // Digits OR a number word: prose says "runs sixteen checks" as often as it says "16 checks", and a
+    // check that only understands one of those spellings is the same defect this step was fixed for.
+    const asCount = (raw) => (/^\d+$/.test(raw) ? Number(raw) : WORDS[raw.toLowerCase()]);
+    for (const m of text.matchAll(/(?<![A-Za-z\d])(\d+|[A-Za-z]+)[- ]checks?\b/gi)) {
+      const stated = asCount(m[1]);
+      if (stated === undefined) continue;
+      if (stated !== steps.length) problems.push(rel + ' states "' + m[1] + ' checks"; the gate has ' + steps.length);
+    }
+    for (const line of text.split('\n')) {
+      if (!/gate/i.test(line)) continue;
+      for (const m of line.matchAll(/(?<![A-Za-z\d])(\d+|[A-Za-z]+)[- ]steps?\b/gi)) {
+        const stated = asCount(m[1]);
+        if (stated === undefined) continue;
+        if (stated !== steps.length) problems.push(rel + ' states "' + m[1] + ' steps"; the gate has ' + steps.length);
+      }
+    }
+    // The word has to BE a number: 'inject known faults' is a sentence, not a count.
+    for (const m of text.matchAll(/(?<![A-Za-z\d])(\d+|[A-Za-z]+)\s+known faults\b/gi)) {
+      const raw = m[1].toLowerCase();
+      const stated = /^\d+$/.test(raw) ? Number(raw) : WORDS[raw];
+      if (stated === undefined) continue;
+      if (stated !== mutations) problems.push(rel + ' states "' + m[1] + ' known faults"; the gate injects ' + mutations);
+    }
+    for (const m of text.matchAll(/(?<![A-Za-z\d])(\d+)\s+requirements\b/gi)) {
+      if (Number(m[1]) !== requirements.length) problems.push(rel + ' states ' + m[1] + ' requirements; conformance.json holds ' + requirements.length);
+    }
+    for (const m of text.matchAll(/(?<![A-Za-z\d])(\d+)\s+ENFORCED\b/g)) {
+      if (Number(m[1]) !== enforced) problems.push(rel + ' states ' + m[1] + ' ENFORCED; the matrix has ' + enforced);
+    }
+  };
+
+  const docs = ['README.md', 'SKILL.md', 'CONFORMANCE.md']
+    .concat(readdirSync(join(ROOT, 'references')).filter((f) => f.endsWith('.md')).map((f) => 'references/' + f));
+  for (const rel of docs) {
+    const file = join(ROOT, rel);
+    if (existsSync(file)) check(rel, readFileSync(file, 'utf8'));
   }
+  // The newest CHANGELOG entry only; everything below it describes releases that are already history.
+  const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8');
+  const fromFirst = changelog.slice(changelog.indexOf('## '));
+  const endOfFirst = fromFirst.indexOf('\n## ', 1);
+  check('CHANGELOG.md (newest entry)', endOfFirst > 0 ? fromFirst.slice(0, endOfFirst) : fromFirst);
+
   return problems.length
     ? { status: 1, durationMs: 0, out: '', err: problems.join('\n') }
-    : { status: 0, durationMs: 0, out: engineCount + ' engine tests + ' + acceptanceCount + ' acceptance tests; no stale claim found', err: '' };
-}, 'exit 0: every test count stated in current-state docs equals the suites');
+    : {
+        status: 0,
+        durationMs: 0,
+        out: engine + ' engine + ' + acceptance + ' acceptance + ' + handoff + ' handoff tests, ' + steps.length + ' gate checks, ' + mutations + ' injected faults, ' + requirements.length + ' requirements (' + enforced + ' enforced); no stale claim found',
+        err: '',
+      };
+}, 'exit 0: every count stated in current-state docs and the newest CHANGELOG entry equals reality');
 step('findings', 'accepted defects have an owner and a live review date', () => {
   const file = join(ROOT, 'KNOWN-FINDINGS.md');
   if (!existsSync(file)) return { status: 1, durationMs: 0, out: '', err: 'KNOWN-FINDINGS.md is missing; an absent register is a claim that no defects exist' };

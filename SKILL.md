@@ -11,7 +11,7 @@ description: >-
   evidence grading with enforced floors, capability-scored role assignment from a roster of any size
   (any agent names), a shared handoff record with a checker, a dependency-free task-queue CLI, an
   important-task intake gate, and a coordination anti-pattern guide. One command - scripts/gate.mjs -
-  runs thirteen checks and injects ten known faults it must reject before reporting PASS. Activation is
+  runs sixteen checks and injects twelve known faults it must reject before reporting PASS. Activation is
   configurable: global, keyword-triggered (three-valued: engage / surface / silent), or manual.
 
   Do not use for: container or infrastructure orchestration (k8s, docker-compose, service meshes),
