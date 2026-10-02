@@ -2,11 +2,30 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security issue in this skill, do not open a public issue. Report it privately via a GitHub Security Advisory at:
-
-the private security-advisory channel of the repository you received this from
+If you discover a security issue in this skill, do not open a public issue. Report it privately through
+the security-advisory channel of the repository, listing the task id, the command, and the observed
+behaviour.
 
 You will receive an acknowledgment within 5 business days and a status update once triage begins.
+
+## This repository is also a website
+
+GitHub Pages publishes the **repository root** of this project (branch `main`, path `/`). Everything
+committed here is therefore served at a public URL the moment it lands - including dot-directories, which
+are easy to assume are private.
+
+That is not hypothetical: during the landing of the orchestration engine, a dispatched verifier's
+transcript was committed into `.verify-0019/` by a `git add -A`, and was publicly served at
+`/.verify-0019/raw.txt` until the commit was rewritten. It held this machine's queue with real client
+task titles and absolute user paths.
+
+Two consequences, both enforced rather than requested:
+
+- **Scratch files do not belong in this repository.** Verification artefacts, transcripts and machine
+  state go outside it, or into a path listed in `.gitignore`.
+- **The gate checks what git would commit, not what the package would ship.** Those sets differ, and the
+  hygiene step uses `git ls-files -co --exclude-standard` so an ignored path cannot blind it. Run
+  `git status` before `git add -A` anyway; the gate is the backstop, not the first line.
 
 ## Safe-Use Notes for Agents Using This Skill
 
