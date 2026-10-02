@@ -149,6 +149,18 @@ step('handoff', 'the handoff record discipline is checkable', () => {
   return { status: 0, durationMs: 0, out: 'handoff tests pass and the example record validates', err: '' };
 }, 'exit 0: the four record files exist, the live entry carries status/owner/steps/evidence, and the tests cover failure cases');
 
+step('skill-catalog', 'the router this repository ships is the router that actually runs', () => {
+  // The unit suite covers buildIndex and topMatch. It never runs the two commands a person types, and
+  // a module usually breaks at its edges: a flag renamed, an output path changed, a catalogue written
+  // somewhere the router does not look. The smoke builds one from examples/skill-catalog through the
+  // CLI and routes real queries through the router, so both halves are exercised here.
+  const tests = node(['--test', 'scripts/skill-catalog/skill-catalog.test.mjs']);
+  if (tests.status !== 0) return { status: 1, durationMs: 0, out: tail(tests.out, 300), err: tail(tests.err, 300) };
+  const smoke = node(['scripts/skill-catalog/smoke.mjs']);
+  if (smoke.status !== 0) return { status: 1, durationMs: 0, out: tail(smoke.out, 300), err: tail(smoke.err, 300) };
+  return { status: 0, durationMs: 0, out: 'skill-catalog unit suite passes and its CLIs route the shipped fixture', err: '' };
+}, 'exit 0: the unit suite plus an end-to-end CLI run over examples/skill-catalog, including the refusal it documents');
+
 step('hygiene', 'no private paths, secrets or host-specific names in the repository or the package', () => {
   // Host-specific names live in a file that is not committed: a denylist listing the clients it
   // protects publishes them. Absent (a fresh checkout, CI) the generic set still runs, and the step
