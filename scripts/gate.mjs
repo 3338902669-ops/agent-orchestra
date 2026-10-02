@@ -35,6 +35,25 @@ const EVIDENCE_DIR = flag('--evidence', join(ROOT, 'evidence'));
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'evidence']);
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 
+/**
+ * Every file that would be COMMITTED, as opposed to every file that would be SHIPPED.
+ *
+ * These are not the same set, and conflating them caused a real leak: the package build skips
+ * dot-entries (agent runtimes, evidence), so the walker used by the hygiene check skipped them too -
+ * and a verifier's 58 KB transcript containing this machine's client task titles was committed to a
+ * public repository by 'git add -A' without a single private path being flagged, even though the
+ * patterns for them were already in gate-patterns.json.
+ */
+function walkRepo(dir, out = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === '.git') continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) walkRepo(full, out);
+    else out.push(full);
+  }
+  return out;
+}
+
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     // Any dot-entry is runtime state, not source: .git, and an agent runtime that keeps its session
@@ -130,11 +149,27 @@ step('handoff', 'the handoff record discipline is checkable', () => {
   return { status: 0, durationMs: 0, out: 'handoff tests pass and the example record validates', err: '' };
 }, 'exit 0: the four record files exist, the live entry carries status/owner/steps/evidence, and the tests cover failure cases');
 
-step('hygiene', 'no private paths, secrets or host-specific names ship', () => {
+step('hygiene', 'no private paths, secrets or host-specific names in the repository or the package', () => {
   const patterns = JSON.parse(readFileSync(join(ROOT, 'scripts/gate-patterns.json'), 'utf8'));
   const self = join(ROOT, 'scripts/gate-patterns.json');
   const hits = [];
-  for (const file of walk(ROOT)) {
+  // The scan covers what GIT WOULD COMMIT, not what the package would ship. Those sets differ, and
+  // conflating them caused a real leak: the package build skips dot-entries (agent runtimes,
+  // evidence), so the walker this check used skipped them too - and a verifier's 58 KB transcript
+  // holding this machine's client task titles was committed by 'git add -A' without one private path
+  // being flagged, although the patterns for them were already in gate-patterns.json.
+  //
+  // git knows the answer better than a directory rule does: ignored files are excluded, untracked
+  // files that would be committed are included. Without git (an unpacked package), fall back to
+  // walking everything and let the ignore list be approximated.
+  let candidates;
+  try {
+    candidates = spawnSync('git', ['ls-files', '-co', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' })
+      .stdout.split('\n').filter(Boolean).map((p) => join(ROOT, p));
+  } catch {
+    candidates = walkRepo(ROOT);
+  }
+  for (const file of candidates) {
     if (file === self) continue;
     if (!/\.(md|mjs|cjs|js|json|ya?ml|txt)$/.test(file)) continue;
     const text = readFileSync(file, 'utf8');
