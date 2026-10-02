@@ -25,6 +25,7 @@ import {
   createState,
   createTask,
   failVerification,
+  migrateState,
   nextDispatch,
   overrideVerificationGate,
   recoverTask,
@@ -249,6 +250,23 @@ function runCommand(args) {
       );
     }
     return print(result.task);
+  }
+  if (command === 'migrate') {
+    // Bring a queue from an earlier generation onto the current rules. The old file is read, never
+    // rewritten in place; the target gets a timestamped backup first.
+    const from = value(args, '--from');
+    const legacy = JSON.parse(readFileSync(from, 'utf8'));
+    const rosterPath = value(args, '--roster', false);
+    const roster = rosterPath ? JSON.parse(readFileSync(rosterPath, 'utf8')) : undefined;
+    const { state: migrated, report } = migrateState(legacy, { source: from, roster });
+    if (args.includes('--dry-run')) return print({ dryRun: true, report, wouldWrite: STATE_FILE });
+    let backup = null;
+    if (existsSync(STATE_FILE)) {
+      backup = STATE_FILE + '.pre-migrate-' + new Date().toISOString().replace(/[:.]/g, '-') + '.bak';
+      writeFileSync(backup, readFileSync(STATE_FILE));
+    }
+    commit(migrated, rev);
+    return print({ ok: true, report, backup, wrote: STATE_FILE });
   }
   const id = value(args, '--task');
   if (command === 'claim') {

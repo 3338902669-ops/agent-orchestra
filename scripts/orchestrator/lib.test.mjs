@@ -34,6 +34,7 @@ import {
   createTask,
   failVerification,
   implementerForType,
+  migrateState,
   nextDispatch,
   ownerFor,
   overrideVerificationGate,
@@ -1373,4 +1374,53 @@ test('override: accepting a failure lets the task proceed instead of demanding a
   assert.equal(task.verification.blocked, false);
   assert.equal(task.phase, 'evidence', 'the override is the decision to proceed');
   assert.equal(task.lock, null);
+});
+
+// ── landing an earlier queue on the current rules (2026-10-02) ───────────────
+
+test('migrate: an earlier queue keeps every task and gains the current fields', () => {
+  const legacy = JSON.parse(readFileSync(new URL('../../examples/legacy-queue-v3.json', import.meta.url), 'utf8'));
+  const { state, report } = migrateState(legacy, { source: 'examples/legacy-queue-v3.json' });
+  assert.equal(state.version, STATE_VERSION);
+  assert.deepEqual(Object.keys(state.tasks).sort(), ['task-0001', 'task-0002', 'task-0003']);
+  assert.equal(report.tasks, 3);
+  assert.ok(state.roster && state.policy, 'a migrated queue must carry a roster and a policy');
+  assert.equal(state.nextTaskNumber, 4, 'the next id must not collide with the migrated ones');
+  for (const task of Object.values(state.tasks)) {
+    assert.ok(RIGOR_LEVELS.includes(task.rigor));
+    assert.ok(task.verification, 'every task needs a verification record');
+    assert.ok(Array.isArray(task.evidence));
+    assert.ok(task.legacy, 'a migrated task must say it was migrated');
+  }
+});
+
+test('migrate: a historical outcome is recorded as unrecorded, never as passed', () => {
+  // Claiming a task finished in August was verified under rules that did not exist then would be the
+  // false qualification this project exists to prevent.
+  const legacy = JSON.parse(readFileSync(new URL('../../examples/legacy-queue-v3.json', import.meta.url), 'utf8'));
+  const { state } = migrateState(legacy);
+  assert.equal(state.tasks['task-0001'].status, 'done');
+  assert.equal(state.tasks['task-0001'].verification.status, 'unrecorded');
+  assert.ok(state.tasks['task-0001'].verification.note);
+  assert.equal(state.tasks['task-0002'].status, 'blocked');
+  assert.equal(state.tasks['task-0002'].verification.blocked, true);
+  // The last real stage is recovered from the task's own event log rather than invented.
+  assert.equal(state.tasks['task-0002'].phase, 'verify');
+  assert.equal(state.tasks['task-0003'].verification.status, 'pending');
+});
+
+test('migrate: a migrated queued task is workable under the current rules', () => {
+  const legacy = JSON.parse(readFileSync(new URL('../../examples/legacy-queue-v3.json', import.meta.url), 'utf8'));
+  const { state } = migrateState(legacy);
+  const dispatch = nextDispatch(state, 'task-0003');
+  assert.equal(dispatch.execute, false);
+  assert.equal(dispatch.agent, 'agent-c');
+  assert.ok(dispatch.packet && dispatch.packet.version === 1);
+  const claimed = claimTask(state, 'task-0003', 'agent-c').state;
+  assert.equal(claimed.tasks['task-0003'].status, 'in_progress');
+});
+
+test('migrate: a queue that is already current is refused, not silently rewritten', () => {
+  assert.throws(() => migrateState(createState()), /already version/);
+  assert.throws(() => migrateState({}), /expected a state object/);
 });

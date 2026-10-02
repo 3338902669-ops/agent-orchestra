@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "nextTaskNumber": 4,
+  "events": [
+    {
+      "t": "2026-08-18T10:00:00.000Z",
+      "taskId": "task-0001",
+      "type": "created",
+      "phase": "specify"
+    }
+  ],
+  "tasks": {
+    "task-0001": {
+      "id": "task-0001",
+      "title": "a finished job",
+      "phase": "done",
+      "status": "done",
+      "assignedAgent": null,
+      "skipVerify": true,
+      "deploy": {
+        "dir": "X:/somewhere",
+        "cmd": "deploy"
+      },
+      "dispatched": {
+        "accept": 1
+      },
+      "attempts": {
+        "accept": 1
+      },
+      "events": [
+        {
+          "t": "2026-08-18T10:05:00.000Z",
+          "type": "phase",
+          "phase": "accepted",
+          "note": "accepted by hand"
+        }
+      ]
+    },
+    "task-0002": {
+      "id": "task-0002",
+      "title": "a stuck job",
+      "phase": "blocked",
+      "status": "blocked",
+      "assignedAgent": "agent-b",
+      "events": [
+        {
+          "t": "2026-08-19T10:00:00.000Z",
+          "type": "phase",
+          "phase": "verify",
+          "note": "waiting on input"
+        }
+      ]
+    },
+    "task-0003": {
+      "id": "task-0003",
+      "title": "a page redesign",
+      "phase": "implement",
+      "status": "queued",
+      "assignedAgent": "agent-c",
+      "events": [
+        {
+          "t": "2026-08-20T10:00:00.000Z",
+          "type": "phase",
+          "phase": "implement"
+        }
+      ]
+    }
+  }
+}

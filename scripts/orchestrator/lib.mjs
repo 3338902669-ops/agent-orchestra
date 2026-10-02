@@ -439,6 +439,151 @@ function agentCommand(task) {
  * A fresh state. Pass a roster of any size (3 agents, 5, 12 - all fine); the default
  * roster is used when none is given. The roster is validated before it is stored.
  */
+/**
+ * Migrate a queue written by an earlier version into the current shape.
+ *
+ * This machine had a live queue from an earlier generation of the engine: 14 real tasks, 8 of them
+ * done, produced under a flow that had no rigor levels, no evidence grades and no verification
+ * records. The current engine can READ that file - the fallbacks cover the missing roster and policy -
+ * which is worse than refusing it: the rules the project is built on silently do not apply to any of
+ * that work.
+ *
+ * So the migration adds what is missing and says what it cannot know. Historical tasks keep their
+ * status and gain a `legacy` block, and their verification is recorded as `unrecorded`, never as
+ * `passed`: claiming they were verified under rules that did not exist when they ran would be the
+ * exact kind of false qualification this project exists to prevent.
+ */
+export const MIGRATION_SOURCE_VERSION = 3;
+
+function migrateLegacyEvent(entry) {
+  return {
+    at: entry?.t ?? entry?.at ?? null,
+    taskId: entry?.taskId ?? null,
+    type: entry?.type ?? 'legacy',
+    phase: entry?.phase ?? null,
+    note: entry?.note ?? null,
+    legacy: true,
+  };
+}
+
+function inferType(title) {
+  return /网页|页面|设计页|前端|ui|page|site|landing/i.test(String(title ?? '')) ? 'web' : 'build';
+}
+
+function migrateLegacyTask(id, old, report) {
+  // A v3 phase could hold a STATUS ('blocked') where v4 keeps a stage. Rather than invent a stage,
+  // the last stage the task actually visited is recovered from its own event log.
+  const lastStage = Array.isArray(old?.events)
+    ? old.events.map((e) => e?.phase).filter((p) => STAGES.includes(p)).pop()
+    : null;
+  const phase = STAGES.includes(old?.phase)
+    ? old.phase
+    : (old?.phase === 'done' ? 'done' : (lastStage ?? 'specify'));
+  const status = old?.status === 'done' ? 'done' : old?.status === 'blocked' ? 'blocked' : 'queued';
+  if (!STAGES.includes(old?.phase) && old?.phase !== 'done') {
+    report.unmappedPhases.push(id + ': ' + String(old?.phase) + ' -> ' + phase);
+  }
+  if (!old?.type) report.inferredTypes.push(id + ' -> ' + inferType(old?.title));
+  const historical = status === 'done' || status === 'blocked';
+  const lastAt = Array.isArray(old?.events) && old.events.length
+    ? (old.events[old.events.length - 1]?.t ?? old.events[old.events.length - 1]?.at ?? null)
+    : null;
+  const verification = historical
+    ? {
+        ...emptyVerification(),
+        status: 'unrecorded',
+        blocked: status === 'blocked',
+        at: lastAt,
+        legacy: true,
+        note: 'this task predates recorded verification; its outcome is history, not a verified claim',
+      }
+    : emptyVerification();
+  return {
+    id,
+    title: old?.title ?? id,
+    type: TYPES.includes(old?.type) ? old.type : inferType(old?.title),
+    capability: old?.capability ?? null,
+    workspace: old?.workspace ?? DEFAULT_WORKSPACE,
+    phase,
+    assignedAgent: old?.assignedAgent ?? null,
+    status,
+    important: false,
+    // L1 because these tasks were never scored for rigor. Inventing L2/L3 for them would demand
+    // evidence nobody recorded; L1 is the honest floor, and `legacy` says where it came from.
+    rigor: 'L1',
+    requiresDomainReview: false,
+    domain: null,
+    domainReview: null,
+    resources: Array.isArray(old?.resources) ? old.resources : [],
+    startChoices: { ...DEFAULT_START_CHOICES },
+    startChoicesSource: 'defaults',
+    lock: null,
+    externalAction: null,
+    evidence: [],
+    verification,
+    legacy: {
+      migratedFrom: old?.version ?? MIGRATION_SOURCE_VERSION,
+      phase: old?.phase ?? null,
+      skipVerify: old?.skipVerify ?? null,
+      deploy: old?.deploy ?? null,
+      dispatched: old?.dispatched ?? null,
+      attempts: old?.attempts ?? null,
+      events: Array.isArray(old?.events) ? old.events : null,
+    },
+    createdAt: old?.createdAt ?? (Array.isArray(old?.events) && old.events[0]?.t) ?? now(),
+    updatedAt: now(),
+  };
+}
+
+export function migrateState(legacy, options = {}) {
+  if (!legacy || typeof legacy !== 'object' || !legacy.tasks) {
+    throw new Error('migrate: expected a state object with a tasks map');
+  }
+  const from = Number(legacy.version ?? 0);
+  if (from >= STATE_VERSION) {
+    throw new Error('migrate: state is already version ' + from + ' (current is ' + STATE_VERSION + ')');
+  }
+  const roster = validateRoster(copy(options.roster ?? legacy.roster ?? DEFAULT_ROSTER));
+  const report = {
+    from,
+    to: STATE_VERSION,
+    tasks: 0,
+    unmappedPhases: [],
+    inferredTypes: [],
+    note:
+      'Historical tasks keep their status and are marked legacy: their verification is recorded as ' +
+      'unrecorded, because it was not produced under the current rules and is not claimed to have been.',
+  };
+  const tasks = {};
+  for (const [id, task] of Object.entries(legacy.tasks)) {
+    tasks[id] = migrateLegacyTask(id, task, report);
+  }
+  report.tasks = Object.keys(tasks).length;
+  const highest = Object.keys(tasks).reduce((max, id) => {
+    const n = Number(String(id).replace(/^task-/, ''));
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+  return {
+    state: {
+      version: STATE_VERSION,
+      migration: {
+        from,
+        to: STATE_VERSION,
+        at: now(),
+        source: options.source ?? null,
+        note: report.note,
+        tasks: report.tasks,
+      },
+      nextTaskNumber: Math.max(Number(legacy.nextTaskNumber ?? 1), highest + 1),
+      tasks,
+      events: Array.isArray(legacy.events) ? legacy.events.map(migrateLegacyEvent) : [],
+      roster,
+      policy: { maxVerificationAttempts: legacy.policy?.maxVerificationAttempts ?? 3 },
+    },
+    report,
+  };
+}
+
 export function createState(roster = DEFAULT_ROSTER) {
   const checked = validateRoster(copy(roster));
   return {
