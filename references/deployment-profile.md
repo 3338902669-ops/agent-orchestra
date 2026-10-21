@@ -2,8 +2,11 @@
 
 The concrete instantiation behind SKILL.md's "Deployment profile" section: one user's
 team of eight seats across a cloud VM and one Windows machine. Paths are the box's
-(`C:\Users\33389\...`) unless marked cloud. This file is a living record; update it
-when a channel, seat or mechanism changes, and re-probe after any change.
+(under the box user's home directory) unless marked cloud. This file is a living
+record; update it when a channel, seat or mechanism changes, and re-probe after
+any change. Host-specific identifiers (user names, machine names, network
+addresses) are deliberately generalized — the hygiene gate rejects them in the
+repository.
 
 ## Seats
 
@@ -53,10 +56,10 @@ tianshu mirrored inside Grok Bot, not separate agents.
 
 ## Transport
 
-All cloud↔box traffic rides Tailscale: box `yffffff` at 100.96.4.48, cloud VM
-joined as device `muse`, TCP through the runtime proxy (port 3130) or the
-`ssh-yf` wrapper. Read-only pull service `muse-pull` on the box (port 18080,
-six whitelisted files, tailnet + loopback only).
+All cloud↔box traffic rides a Tailscale tailnet: the box at its tailnet
+(100.64.0.0/10) address, the cloud VM joined as a named device, TCP through
+the runtime proxy or a local ssh wrapper. A read-only pull service runs on
+the box (six whitelisted files, tailnet + loopback only).
 
 **Lesson, 2026-10-21**: for ~3.5 hours every port returned empty replies while
 `tailscale status` reported Connected and the box showed a green dot in the
