@@ -196,6 +196,40 @@ The record is the authority on intent; the queue is the scheduler. When they dis
 
 Full detail, including the cross-tool checklist and the memory sync routine: `references/handoff.md`.
 
+## Deployment profile: hub-coordinated mesh (live instantiation, 2026-10-21)
+
+The protocol above is running, invariants unmodified, as a concrete team of eight seats across a cloud VM and one local machine. This profile records where the live deployment deliberately goes beyond the generic text; the concrete record (seats, channels, paths, probe results) is `references/deployment-profile.md`.
+
+**Topology: hub for authority, mesh for traffic.** Anti-pattern 5's hub-and-spoke still owns dispatch, approvals and state — nothing is assigned, approved or marked done except through the coordinator. Execution traffic, however, no longer relays through the hub: every ordered pair of agents has a **tested real-time link**, probe-verified in both directions and re-probed after any outage, so information syncs in seconds instead of at polling intervals. A direct link carries work products and evidence; it never carries a new assignment. The red line against private task hand-offs is unchanged.
+
+**One human, one contact point.** The user talks only to the coordinator. Every gated decision is batched into a single list for the user; approval is per item, and a blanket authorization does not cover gated actions (recorded precedent).
+
+**A link is a mechanism, not an intention.** Each seat is reached through the strongest channel it actually has: a headless CLI over SSH where one exists; a scheduled-task bridge where a sandboxed desktop agent's restricted token requires an interactive session; a native headless invocation for the verifier; a GUI wake channel for session-bound bots with no port and no CLI; a file inbox/outbox as the fallback that always works. A channel counts as up only when a probe round-trips — configuration, enrollment status and console presence are not evidence of reachability.
+
+**Three seats are pinned by the user.** Routine work is still score-routed, but the coordinator seat, the verifier seat (a dedicated agent that never implements) and the single writer of the shared record are pinned in the roster. Pinning is a recorded deployment decision, not a change to the routing rules.
+
+**The shared memory is a temporal graph.** The memory snapshot is implemented as a knowledge graph (Graphiti on Neo4j): facts carry validity windows, a superseded fact keeps the timestamp it stopped being true, and "what was true when" is a query rather than an excavation. Only coordinator-ingested, source-anchored content enters the graph — anti-pattern 2's verified partition, enforced by ingest discipline. Private per-agent memory is never bulk-copied into the shared graph.
+
+**Rules ship as versioned fragments.** The rules of engagement live as fragments in a shared rules directory (cloud-commons, v1→v3) and are synced into each member's own rules file by script, then verified per member after every sync. A fragment that does not land everywhere is a failed distribution, not a partial success.
+
+**Internal traffic is machine-native.** Between agents: structured payloads and task cards carrying evidence anchors (source path, sha16, raw command output). Human language is produced only at the user boundary. A cross-agent claim without an anchor is treated as no claim, and the coordinator stays in the loop on in-flight cross-agent work rather than polling on a timer.
+
+**The eight seats** (ids in the roster): `zaodianshui` coordinator (cloud) · `codex` implementation — web, code, deploys · `dsh` local lead — watchdogs, scheduled guardianship, single writer of the shared record · `tianshu` verification only · `xiaoyu` coordinator of the Grok Bot line · `yunying` content operations · `jiaoxue` teaching line, speaks when addressed · `openclaw` retired platform (workspace only). Three further personas in the team group chat are mirrors of codex, dsh and tianshu inside Grok Bot, not separate agents.
+
+## Cold-start bootstrap: from zero communication to this mesh
+
+The profile above was not installed; it was bootstrapped from a state in which no agent could reach any other and no shared infrastructure existed. The reproducible path is `references/bootstrap-from-zero.md`; the ladder, in brief:
+
+- **Stage 0 — Inventory.** For every agent: invocation surface (CLI, API, GUI-only, none), writable ground, session model, and who can write where. Personas inside a host application are surfaces of one seat, not separate agents. Output: a draft channel matrix; empty cells are expected.
+- **Stage 1 — The mailbox.** Stand up a file inbox/outbox on any ground two agents can both see — a shared directory, a synced folder, a repo. One file per message, task-card format, evidence anchors on every claim, receipts for every delivery. This rung alone carries dispatch, handoff and verification; if no ground is shared at all, the user relays the files by hand and the protocol is unchanged.
+- **Stage 2 — Hub, roster, commons.** Designate one hub as the user's only contact point; write the roster; pin the coordinator, the verifier and the single writer of the shared record; publish the rules of engagement as a versioned commons file the hub alone edits.
+- **Stage 3 — Distribution.** Merge the commons into every member's own instructions file and verify per member that it landed; a fragment missing anywhere is a failed distribution.
+- **Stage 4 — The pairwise ladder.** Upgrade pair by pair — mailbox, hub-relayed, direct invocation (headless CLI, remote shell, bridges), session-bound bridges for sandboxed desktop agents — proving each ordered pair with a bidirectional PONG and recording per-channel quirks in the matrix. On outage, fall back one rung and keep working.
+- **Stage 5 — Memory.** Share digests and a hub index, never bulk copies of raw memory. A temporal knowledge graph behind the hub is an optional accelerator; the mesh must work without it.
+- **Stage 6 — Operating rhythm.** The mesh now runs as the deployment profile describes: assignments only through the hub, verification by a non-implementer, anchors at every hand-off, human language only at the user boundary.
+
+Bootstrap is complete only when the acceptance checklist in the reference passes — including one real task run end-to-end through the mesh and one outage ridden through on a lower rung.
+
 ## Pipeline and queue
 
 The specify stage cannot end without its **work products**: `--spec` (what is being built) and

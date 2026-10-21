@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format follows Keep a Changelog; versioning follows SemVer.
 
+## [Unreleased]
+
+### Added
+- **Deployment profile: hub-coordinated mesh** (SKILL.md section + `references/deployment-profile.md`). The protocol's first full live instantiation — an eight-seat team across a cloud VM and a local machine — is now recorded as a profile of the generic rules, with six deployment-level evolutions: (1) authority stays hub-and-spoke while execution traffic runs on a pairwise, probe-verified real-time mesh (direct links carry products and evidence, never assignments); (2) the user talks only to the coordinator, with gated decisions batched and approved per item; (3) channels are concrete mechanisms (SSH CLI, scheduled-task bridge for sandboxed desktop agents, native headless invocation, GUI wake channel, file inbox/outbox fallback) and count as up only when a probe round-trips; (4) three seats pinned by the user — coordinator, dedicated verifier, single writer of the shared record — while routine work stays score-routed; (5) the shared memory snapshot is implemented as a temporal knowledge graph (Graphiti on Neo4j, 203 episodes / 1193 entities / 2257 facts at the time of writing) with coordinator-only, source-anchored ingest; (6) the rules of engagement ship as versioned fragments (cloud-commons v1→v3) synced into every member's rules file and verified per member. Internal agent traffic is machine-native structured payloads with evidence anchors; human language is produced only at the user boundary.
+
+- **Cold-start bootstrap** (SKILL.md section + `references/bootstrap-from-zero.md`). The deployment profile is now reproducible by a fresh installer whose agents start with no inter-agent communication at all: a six-stage ladder — inventory and channel matrix; a file mailbox on any shared writable ground (user-relayed when none exists) as the channel that always works; hub designation with roster, three pinned seats and a versioned commons; per-member verified distribution; pair-by-pair channel upgrades proven by bidirectional PONG probes with a fallback ladder for outages; digest-based shared memory with an optional temporal graph — closing with an acceptance checklist that requires one real end-to-end task and one outage ridden through on a lower rung.
+
+### Fixed
+- The local-machine copy of SKILL.md had drifted one line behind (its frontmatter description still carried the pre-upgrade gate figures); both copies now carry the verified figures — the gate was re-run and passed on 2026-10-21 — and are hash-identical.
+
 ## [2.5.6] - 2026-10-03
 
 Everything that shipped after 2.5.5, and the release metadata brought back in step with it. A reader
