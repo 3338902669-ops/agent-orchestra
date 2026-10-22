@@ -1,0 +1,13 @@
+# Example denylist for the hygiene suite — DELIBERATELY FAKE terms.
+# One term per line; blank lines and lines starting with # are ignored.
+# These terms are fictional and appear nowhere in a real deployment.
+# For a real check, point the AGENT_TEAM_OS_DENYLIST environment variable
+# at your own private list, or add a denylist.local.txt in the package
+# root (git-ignored). Never commit a real list into this package.
+ExampleCorp
+Alice Exampleton
+Bob Samplesworth
+fakeserver.invalid
+WidgetTron 9000
+acme-deployment-0000
+Sample Project X

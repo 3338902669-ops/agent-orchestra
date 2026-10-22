@@ -284,3 +284,7 @@ defects and their review dates.
 
 Apache-2.0 for the code (with the patent grant that a protocol implementer needs), CC BY 4.0 for
 the protocol specification. See LICENSE, NOTICE and LICENSE-SPEC.
+
+## Companion package: Agent Team OS
+
+This repository also ships **Agent Team OS**, a companion skill package for running a team of AI agents as one governed unit: layered long-term memory, an agent mailbox with delivery receipts, an event-driven doorbell, and human approval gates. The full package lives in [agent-team-os/README.md](agent-team-os/README.md).

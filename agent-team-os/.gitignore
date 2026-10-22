@@ -1,0 +1,3 @@
+# A real denylist never belongs in this repository.
+denylist.local.txt
+__pycache__/
