@@ -9,8 +9,13 @@ All notable changes to this project are documented here. Format follows Keep a C
 
 - **Cold-start bootstrap** (SKILL.md section + `references/bootstrap-from-zero.md`). The deployment profile is now reproducible by a fresh installer whose agents start with no inter-agent communication at all: a six-stage ladder — inventory and channel matrix; a file mailbox on any shared writable ground (user-relayed when none exists) as the channel that always works; hub designation with roster, three pinned seats and a versioned commons; per-member verified distribution; pair-by-pair channel upgrades proven by bidirectional PONG probes with a fallback ladder for outages; digest-based shared memory with an optional temporal graph — closing with an acceptance checklist that requires one real end-to-end task and one outage ridden through on a lower rung.
 
+- **Agent Team OS merged into this repository** (2026-10-23). The companion deployment package — layered memory, agent mailbox with delivery receipts, event-driven doorbell, human approval gates — now ships in the `agent-team-os/` directory of this repository instead of as a separate project, so the protocol and the deployment that runs it are versioned together.
+
+- **`docs/ARCHITECTURE.md`: the production deployment's current-state architecture** (2026-10-23). Seats, communication layer, governance, memory layer, operations surface, security boundaries and honest limits of the live deployment, with its timeline through 2026-10-23 — including the comms v2 shadow phase (NATS JetStream transport, Postgres task ledger, A2A task contracts, mirroring production dispatches since 2026-10-23; cutover gated on at least 7 days, 100 mirrored tasks and clean daily reconciliation) and the temporal knowledge graph's wiring into daily use at 286 episodes / 1,367 entities / 2,646 facts. The README gained a matching "Running in production" section (220+ mailbox messages, 465 radar letters sent cumulatively, verification gates on consequential work).
+
 ### Fixed
 - The local-machine copy of SKILL.md had drifted one line behind (its frontmatter description still carried the pre-upgrade gate figures); both copies now carry the verified figures — the gate was re-run and passed on 2026-10-21 — and are hash-identical.
+- Hygiene gate examples in the companion package docs carried host-path examples and failed the repository's own hygiene check in CI (2026-10-23); the examples were replaced with generic paths and the gate passes again.
 
 ## [2.5.6] - 2026-10-03
 

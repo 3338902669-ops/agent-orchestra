@@ -75,6 +75,7 @@ One portable, capability-first protocol for multi-agent work along **two axes**:
 | `scripts/orchestrator/` | Task queue CLI + library + tests (zero dependencies, Node 18+) | you want deterministic dispatch and claim locks |
 | `scripts/install.ps1`, `scripts/install.sh` | One-click installers that copy this single skill into a detected skills directory | first install |
 | `scripts/skill-catalog/` | Optional, standalone: route a task description to the right skill using the skill's own `description`, with no per-skill keyword list to maintain | you have a skill directory and want it findable |
+| `docs/ARCHITECTURE.md` | The production deployment that runs this protocol daily: seats, communication layer, governance, memory, operations, and its honest limits | you want the live system this ships from, not just the rules |
 
 ## Features
 
@@ -280,6 +281,23 @@ fails instead of reporting green - see [`references/verification-standard.md`](r
 for the requirements it is held to, and [`KNOWN-FINDINGS.md`](KNOWN-FINDINGS.md) for accepted
 defects and their review dates.
 
+## Running in production
+
+This is not a paper protocol. The same-source deployment (**Agent Team OS**, the companion
+package below) runs under it every day, since 2026-10-20: a cloud coordinator dispatching to
+local execution seats, with a dedicated verification seat that never implements what it
+verifies. As of 2026-10-23 the live deployment has carried **220+ mailbox messages** with
+delivery receipts and acks between seats, run its independent verification gates on every
+consequential change, sent **465 business letters** cumulatively through its outreach radar
+(every send behind a human approval gate), and grown a temporal knowledge graph to
+**2,646 facts** with daily ingest. Its next-generation communication layer — NATS JetStream
+transport, a Postgres task ledger and A2A task contracts — is running in shadow alongside the
+mailbox, mirroring real dispatches before any cutover decision.
+
+The full current-state record is [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); the
+channel-level detail is in
+[`references/deployment-profile.md`](references/deployment-profile.md).
+
 ## License
 
 Apache-2.0 for the code (with the patent grant that a protocol implementer needs), CC BY 4.0 for
@@ -287,4 +305,4 @@ the protocol specification. See LICENSE, NOTICE and LICENSE-SPEC.
 
 ## Companion package: Agent Team OS
 
-This repository also ships **Agent Team OS**, a companion skill package for running a team of AI agents as one governed unit: layered long-term memory, an agent mailbox with delivery receipts, an event-driven doorbell, and human approval gates. The full package lives in [agent-team-os/README.md](agent-team-os/README.md).
+This repository also ships **Agent Team OS**, a companion skill package for running a team of AI agents as one governed unit: layered long-term memory, an agent mailbox with delivery receipts, an event-driven doorbell, and human approval gates. The full package lives in [agent-team-os/README.md](agent-team-os/README.md). For the architecture of the production deployment that runs both packages, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
