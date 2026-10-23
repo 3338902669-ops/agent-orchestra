@@ -142,8 +142,8 @@ document live at `../templates/roster.md` and
 **Capabilities needed**
 
 - Read and write access to a shared folder (for example `~/inbox/`
-  and `~/outbox/`, or `C:\Users\<you>\inbox\` and
-  `C:\Users\<you>\outbox\`).
+  and `~/outbox/`, or `%USERPROFILE%\inbox\` and
+  `%USERPROFILE%\outbox\`).
 - A convention the seat follows on each run: read new inbox files,
   act, write a reply file to the outbox, and record processed file
   names so nothing is handled twice.

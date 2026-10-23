@@ -13,10 +13,10 @@ leaves no placeholder behind. There are 21 placeholders in total.
 
 | Placeholder | Meaning | Sample value |
 |---|---|---|
-| `{{USER_HOME}}` | Home directory of the account that runs the team | `/home/example` |
-| `{{WORK_DIR}}` | Root of the team's working files; wake adapters run with this as their working directory | `/home/example/team` |
-| `{{BRIDGE_DIR}}` | Directory holding doorbell state, logs, and per-event output | `/home/example/team/bridge` |
-| `{{STORAGE_DIR}}` | Mailbox storage directory — the directory the doorbell watches for write events | `/home/example/team/mail-storage` |
+| `{{USER_HOME}}` | Home directory of the account that runs the team | `~` |
+| `{{WORK_DIR}}` | Root of the team's working files; wake adapters run with this as their working directory | `~/team` |
+| `{{BRIDGE_DIR}}` | Directory holding doorbell state, logs, and per-event output | `~/team/bridge` |
+| `{{STORAGE_DIR}}` | Mailbox storage directory — the directory the doorbell watches for write events | `~/team/mail-storage` |
 
 ## Mailbox
 
@@ -26,9 +26,9 @@ leaves no placeholder behind. There are 21 placeholders in total.
 | `{{MAIL_HOST}}` | Address the mailbox server actually binds (do not assume loopback) | `192.0.2.10` |
 | `{{MAIL_PORT}}` | Mailbox server port | `8765` |
 | `{{MAIL_BIN}}` | Mailbox CLI binary used by the doorbell to read delivery events | `/usr/local/bin/mail-cli` |
-| `{{TOKEN_FILE}}` | File containing the mailbox bearer token; read at runtime, never printed or committed | `/home/example/team/bridge/mail-token.txt` |
+| `{{TOKEN_FILE}}` | File containing the mailbox bearer token; read at runtime, never printed or committed | `~/team/bridge/mail-token.txt` |
 | `{{PROJECT_KEY}}` | Mailbox project key / slug | `example-team-mail` |
-| `{{PROJECT_PATH}}` | Mailbox project path as registered with the server | `/home/example/team/mail` |
+| `{{PROJECT_PATH}}` | Mailbox project path as registered with the server | `~/team/mail` |
 
 ## Seat identities
 

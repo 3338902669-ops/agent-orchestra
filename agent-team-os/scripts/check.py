@@ -76,17 +76,17 @@ LINK_RE = re.compile(r"\]\(([^)\s]+)\)")
 NESTED_ENV = "AGENT_TEAM_OS_NESTED_ERROR"
 
 SAMPLE = {
-    "USER_HOME": "/home/example",
-    "WORK_DIR": "/home/example/team",
-    "BRIDGE_DIR": "/home/example/team/bridge",
-    "STORAGE_DIR": "/home/example/team/mail-storage",
+    "USER_HOME": "~",
+    "WORK_DIR": "~/team",
+    "BRIDGE_DIR": "~/team/bridge",
+    "STORAGE_DIR": "~/team/mail-storage",
     "MAIL_SCHEME": "https",
     "MAIL_HOST": "192.0.2.10",
     "MAIL_PORT": "8765",
     "MAIL_BIN": "/usr/local/bin/mail-cli",
-    "TOKEN_FILE": "/home/example/team/bridge/mail-token.txt",
+    "TOKEN_FILE": "~/team/bridge/mail-token.txt",
     "PROJECT_KEY": "example-team-mail",
-    "PROJECT_PATH": "/home/example/team/mail",
+    "PROJECT_PATH": "~/team/mail",
     "COORDINATOR_NAME": "Coordinator",
     "BUILDER_NAME": "Builder",
     "VERIFIER_NAME": "Verifier",

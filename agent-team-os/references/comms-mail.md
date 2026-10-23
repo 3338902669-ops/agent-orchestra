@@ -32,7 +32,7 @@ Mapping table — keep in the roster, one row per seat:
 | Mail identity | Role | Host / location | Notes |
 |---|---|---|---|
 | `ExampleName` | coordinator | `~/` | |
-| `OtherName` | builder | `C:\Users\<you>\` | |
+| `OtherName` | builder | `%USERPROFILE%\` | |
 
 See [../templates/roster.md](../templates/roster.md) for the roster format.
 
@@ -149,7 +149,7 @@ Pattern:
 - Transport: HTTP POST, JSON-RPC, one method per call.
 - Authentication: bearer token read at runtime from a local token file
   in the seat's home directory (for example `~/mail-token.txt` or
-  `C:\Users\<you>\mail-token.txt`).
+  `%USERPROFILE%\mail-token.txt`).
 - The token is never printed, never logged, and never committed to a
   repository. Rotate it if it appears in any output.
 

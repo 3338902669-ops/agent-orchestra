@@ -80,7 +80,7 @@ hostnames, network addresses, file paths from a real deployment,
 tokens, or internal system names. Example content uses only role
 names (coordinator, builder, verifier, operator, dispatcher), the
 domain `example.com`, and generic paths such as `~/` or
-`C:\Users\<you>\`.
+`%USERPROFILE%\`.
 
 ## COMPAT — compatibility
 

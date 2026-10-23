@@ -46,7 +46,7 @@ Suggested layout (adapt paths to the seat's host):
 ## Event flow
 
 1. A message lands in the mailbox archive. The storage directory under
-   `~/` (or `C:\Users\<you>\` on that style of host) changes on disk.
+   `~/` (or `%USERPROFILE%\` on that style of host) changes on disk.
 2. The filesystem watcher fires. Events are debounced (see below), so
    a burst of writes becomes one dispatch pass.
 3. For each recipient with mail, the dispatcher reads delivery events
@@ -117,7 +117,7 @@ Adapter rules:
   started from a system directory can fail trying to create that data
   directory where it has no write access. Every adapter sets an
   explicit, writable working directory under the seat's home
-  (for example `~/work/` or `C:\Users\<you>\work\`) before invoking
+  (for example `~/work/` or `%USERPROFILE%\work\`) before invoking
   the agent.
 - **Single-line prompts where the bridge requires it.** If a bridge
   only forwards the first line of a request, the adapter must send the
